@@ -8,7 +8,9 @@ import React, {
   useState,
 } from "react"
 import {
-  motion,
+  LazyMotion,
+  domAnimation,
+  m,
   useMotionValue,
   useReducedMotion,
   useSpring,
@@ -171,7 +173,7 @@ const Dash = ({
       className="proximity-dash-button group flex h-2 w-8 items-center border-0 bg-transparent p-0 outline-none"
       onClick={() => onSelect(section.id)}
     >
-      <motion.span
+      <m.span
         className={`${preset.className}${active ? " is-active" : ""}`}
         style={{
           height: preset.thickness,
@@ -197,14 +199,23 @@ const ProximitySidebar = ({
   const pointerInside = useRef(false)
   const resetTimer = useRef<number | null>(null)
   const [activeId, setActiveId] = useState(sections[0]?.id)
-  const [detectedKinds, setDetectedKinds] = useState<Record<string, SectionKind>>(
-    {}
-  )
-
   const sectionIds = useMemo(
     () => sections.map((section) => section.id).join("|"),
     [sections]
   )
+
+  const detectedKinds = useMemo(() => {
+    return sections.reduce<Record<string, SectionKind>>(
+      (nextKinds, section) => {
+        nextKinds[section.id] =
+          section.kind || section.level
+            ? getSectionKind(section)
+            : getElementSectionKind(section.id) ?? getSectionKind(section)
+        return nextKinds
+      },
+      {}
+    )
+  }, [sectionIds, sections])
 
   const registerDash = useCallback(
     (id: string, node: HTMLButtonElement | null) => {
@@ -282,25 +293,14 @@ const ProximitySidebar = ({
 
   useEffect(() => () => clearPendingReset(), [clearPendingReset])
 
-  useEffect(() => {
-    const kinds = sections.reduce<Record<string, SectionKind>>(
-      (nextKinds, section) => {
-        nextKinds[section.id] =
-          section.kind || section.level
-            ? getSectionKind(section)
-            : getElementSectionKind(section.id) ?? getSectionKind(section)
-
-        return nextKinds
-      },
-      {}
-    )
-
-    setDetectedKinds(kinds)
-  }, [sectionIds, sections])
+  const pulseDashRef = useRef(pulseDash)
+  useEffect(() => { pulseDashRef.current = pulseDash }, [pulseDash])
 
   useEffect(() => {
     if (!sections.length) return
 
+    const ac = new AbortController()
+    const { signal } = ac
     let frame = 0
 
     const updateActiveSection = () => {
@@ -335,7 +335,7 @@ const ProximitySidebar = ({
       setActiveId(nextActiveId)
 
       if (!pointerInside.current) {
-        pulseDash(nextActiveId)
+        pulseDashRef.current(nextActiveId)
       }
     }
 
@@ -354,58 +354,55 @@ const ProximitySidebar = ({
     updateActiveSection()
 
     for (const parent of scrollParents) {
-      parent.addEventListener("scroll", scheduleUpdate, { passive: true })
+      parent.addEventListener("scroll", scheduleUpdate, { passive: true, signal })
     }
 
-    window.addEventListener("resize", scheduleUpdate)
+    window.addEventListener("resize", scheduleUpdate, { signal })
 
     return () => {
+      ac.abort()
       if (frame) window.cancelAnimationFrame(frame)
-
-      for (const parent of scrollParents) {
-        parent.removeEventListener("scroll", scheduleUpdate)
-      }
-
-      window.removeEventListener("resize", scheduleUpdate)
     }
-  }, [activeOffset, pulseDash, sectionIds, sections])
+  }, [activeOffset, sectionIds, sections])
 
   return (
-    <nav
-      aria-label="Page sections"
-      className={`proximity-sidebar flex h-full min-h-0 items-center ${
-        side === "left" ? "justify-start" : "justify-end"
-      } ${className}`}
-    >
-      <div
-        className={`proximity-sidebar-stack flex flex-col ${
-          side === "right" ? "items-end" : "items-start"
-        }`}
-        style={{ gap: 8 }}
-        onPointerMove={(event) => {
-          clearPendingReset()
-          pointerInside.current = true
-          mouseY.set(event.clientY)
-        }}
-        onPointerLeave={() => {
-          pointerInside.current = false
-          mouseY.set(Infinity)
-        }}
+    <LazyMotion features={domAnimation}>
+      <nav
+        aria-label="Page sections"
+        className={`proximity-sidebar flex h-full min-h-0 items-center ${
+          side === "left" ? "justify-start" : "justify-end"
+        } ${className}`}
       >
-        {sections.map((section) => (
-          <Dash
-            key={section.id}
-            active={section.id === activeId}
-            mouseY={mouseY}
-            onSelect={selectSection}
-            registerDash={registerDash}
-            section={section}
-            sectionKind={detectedKinds[section.id] ?? getSectionKind(section)}
-            side={side}
-          />
-        ))}
-      </div>
-    </nav>
+        <div
+          className={`proximity-sidebar-stack flex flex-col ${
+            side === "right" ? "items-end" : "items-start"
+          }`}
+          style={{ gap: 8 }}
+          onPointerMove={(event) => {
+            clearPendingReset()
+            pointerInside.current = true
+            mouseY.set(event.clientY)
+          }}
+          onPointerLeave={() => {
+            pointerInside.current = false
+            mouseY.set(Infinity)
+          }}
+        >
+          {sections.map((section) => (
+            <Dash
+              key={section.id}
+              active={section.id === activeId}
+              mouseY={mouseY}
+              onSelect={selectSection}
+              registerDash={registerDash}
+              section={section}
+              sectionKind={detectedKinds[section.id] ?? getSectionKind(section)}
+              side={side}
+            />
+          ))}
+        </div>
+      </nav>
+    </LazyMotion>
   )
 }
 

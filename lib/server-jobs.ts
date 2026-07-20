@@ -64,7 +64,7 @@ export function readStatusSnapshot() {
   };
 }
 
-function runNodeScript(args: string[]): Promise<{ stdout: string; stderr: string }> {
+function runNodeScript(args: string[], timeoutMs = 300000): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, args, {
       cwd: APP_ROOT,
@@ -74,6 +74,12 @@ function runNodeScript(args: string[]): Promise<{ stdout: string; stderr: string
 
     let stdout = "";
     let stderr = "";
+    let timedOut = false;
+
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGTERM");
+    }, timeoutMs);
 
     child.stdout.on("data", (chunk: Buffer) => {
       stdout += chunk.toString();
@@ -83,13 +89,21 @@ function runNodeScript(args: string[]): Promise<{ stdout: string; stderr: string
       stderr += chunk.toString();
     });
 
-    child.on("error", reject);
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+
     child.on("close", (code) => {
+      clearTimeout(timer);
+      if (timedOut) {
+        reject(new Error(`Script timed out after ${timeoutMs / 1000}s`));
+        return;
+      }
       if (code === 0) {
         resolve({ stdout, stderr });
         return;
       }
-
       reject(
         new Error(
           stderr.trim() || stdout.trim() || `Command failed with exit code ${code}`
@@ -142,6 +156,7 @@ export async function syncBookmarks() {
       "--max-minutes",
       "30",
       "--yes",
+      "--no-media",
     ]);
 
     let folderSyncWarning: string | null = null;

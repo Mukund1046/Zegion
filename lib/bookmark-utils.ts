@@ -1,5 +1,15 @@
 import type { Bookmark, FacetType, SortMode, ViewMode } from "./types";
 
+const DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
+const LONG_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  month: "long",
+  year: "numeric",
+});
+
 export const STORAGE_KEY = "kairos_state";
 
 export const clamp = (value: number, min: number, max: number) =>
@@ -14,11 +24,7 @@ export const parseDate = (value?: string | null) => {
 export const formatDate = (value?: string | null) => {
   const date = parseDate(value);
   if (!date) return null;
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(date);
+  return DATE_FORMATTER.format(date);
 };
 
 export const escapeHtml = (value = "") =>
@@ -89,13 +95,13 @@ export const estimateCardHeight = (bookmark: Bookmark, itemWidth: number) => {
         240
       )
     : 0;
-  const text = lineClampText(bookmark.text || "", 150);
+  const text = lineClampText(bookmark.text || "", hasImage ? 150 : 220);
   const charsPerLine = Math.max(24, Math.floor(itemWidth / 8.8));
-  const textLines = clamp(Math.ceil(text.length / charsPerLine), 2, 5);
-  const textHeight = textLines * 18;
-  const timelineRows = getTimelineEntries(bookmark).length > 0 ? 1 : 0;
-  const timelineHeight = timelineRows * 22;
-  return imageHeight + textHeight + timelineHeight + 92;
+  const textLines = clamp(Math.ceil(text.length / charsPerLine), 1, 6);
+  const textHeight = textLines * 19;
+  const timelineVisible = getTimelineEntries(bookmark).length > 0;
+  const bodyBase = timelineVisible ? 110 : 84;
+  return imageHeight + textHeight + bodyBase;
 };
 
 export const twitterImageUrl = (url: string, size = "small") => {
@@ -238,21 +244,14 @@ export const formatNavigatorDate = (bookmark: Bookmark) => {
     return `${Math.max(1, Math.round(daysDiff / 7))} week ago`;
   }
 
-  return new Intl.DateTimeFormat(undefined, {
-    month: "long",
-    year: "numeric",
-  }).format(date);
+  return LONG_DATE_FORMATTER.format(date);
 };
 
 export const formatNavigatorSubline = (bookmark: Bookmark) => {
   const date = getNavigatorDate(bookmark);
   if (!date) return bookmark.authorHandle ? `@${bookmark.authorHandle}` : "Bookmark";
 
-  const absolute = new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(date);
+  const absolute = DATE_FORMATTER.format(date);
 
   return [bookmark.authorHandle ? `@${bookmark.authorHandle}` : null, absolute]
     .filter(Boolean)

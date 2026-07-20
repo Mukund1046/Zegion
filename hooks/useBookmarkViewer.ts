@@ -59,6 +59,7 @@ interface ScrubberAnchor {
 interface LightboxItemState {
   element: HTMLDivElement;
   bookmark: Bookmark;
+  resizeAnimation?: ReturnType<typeof animate>;
   _startX?: number;
   _startY?: number;
   _startW?: number;
@@ -74,12 +75,12 @@ const getLightboxTargetFrame = (
   viewportWidth: number,
   viewportHeight: number
 ) => {
-  const margin = viewportWidth < 720 ? 18 : 48;
-  const captionReserve = viewportHeight < 620 ? 72 : 108;
-  const captionGap = viewportHeight < 620 ? 10 : 16;
-  const maxWidth = Math.max(220, viewportWidth - margin * 2);
-  const maxHeight = Math.max(180, viewportHeight - margin * 2 - captionReserve - captionGap);
-  const aspectRatio = media.width / media.height;
+  const margin = viewportWidth < 420 ? 12 : viewportWidth < 720 ? 18 : 48;
+  const captionReserve = viewportHeight < 560 ? 64 : viewportWidth < 720 ? 86 : 108;
+  const captionGap = viewportHeight < 560 ? 8 : 16;
+  const maxWidth = Math.max(120, viewportWidth - margin * 2);
+  const maxHeight = Math.max(120, viewportHeight - margin * 2 - captionReserve - captionGap);
+  const aspectRatio = media.width > 0 && media.height > 0 ? media.width / media.height : 1;
 
   let width = maxWidth;
   let height = width / aspectRatio;
@@ -100,6 +101,27 @@ const getLightboxTargetFrame = (
   return { x, y, width, height, infoTop };
 };
 
+const getViewportSize = () => {
+  const visualViewport = window.visualViewport;
+  return {
+    width: Math.floor(visualViewport?.width || window.innerWidth),
+    height: Math.floor(visualViewport?.height || window.innerHeight),
+  };
+};
+
+function renderScrubberPreviewCardImpl(marker: ScrubberMarkerData) {
+  const weekLabel = marker.weekStart
+    ? new Date(marker.weekStart).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+    : "";
+  const countLabel = marker.weekCount != null ? ` • ${marker.weekCount}` : "";
+  return `
+      <div class="scrubber-preview-card">
+        <div class="scrubber-preview-kicker">${weekLabel ? `Week of ${weekLabel}${countLabel}` : escapeHtml(formatNavigatorSubline(marker.bookmark))}</div>
+        <div class="scrubber-preview-title">${escapeHtml(formatNavigatorDate(marker.bookmark))}</div>
+      </div>
+    `;
+}
+
 export function useBookmarkViewer() {
   const feedShellRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLElement>(null);
@@ -117,6 +139,8 @@ export function useBookmarkViewer() {
   const [folders, setFolders] = useState<BookmarkFolder[]>([]);
   const [activeFolder, setActiveFolder] = useState("All");
   const [activeView, setActiveView] = useState<ViewMode>("media");
+  const activeViewRef = useRef<ViewMode>(activeView);
+  useEffect(() => { activeViewRef.current = activeView }, [activeView])
   const [activeSort, setActiveSort] = useState<SortMode>("recent");
   const [activeSearch, setActiveSearch] = useState("");
   const [activeFacetType, setActiveFacetType] = useState<FacetType>("all");
@@ -124,7 +148,7 @@ export function useBookmarkViewer() {
   const [displayBookmarks, setDisplayBookmarks] = useState<Bookmark[]>([]);
   const [darkMode, setDarkMode] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sortMenuOpen, setSortMenuOpen] = useState(false);
+
   const [syncStatusText, setSyncStatusText] = useState("Local cache ready");
   const [syncStatusTone, setSyncStatusTone] = useState<
     "idle" | "working" | "success" | "error"
@@ -183,6 +207,7 @@ export function useBookmarkViewer() {
     lightboxItem: null as LightboxItemState | null,
     lightboxAnimating: false,
     lightboxOpen: false,
+    needsPostLightboxRelayout: false,
     cameraOffset: { x: 0, y: 0 },
     targetOffset: { x: 0, y: 0 },
     isDragging: false,
@@ -337,18 +362,23 @@ export function useBookmarkViewer() {
               )
             : item.h;
         mediaWrap.style.height = `${imageHeight}px`;
+        mediaWrap.classList.remove("loading-image");
 
         const source = twitterImageUrl(
           bookmark.images[0].url,
           view === "card" ? "large" : "medium"
         );
         if (image.src !== source) {
+          mediaWrap.classList.add("loading-image");
+          image.onload = () => mediaWrap.classList.remove("loading-image");
+          image.onerror = () => mediaWrap.classList.remove("loading-image");
           image.src = source;
           image.alt = bookmark.text.substring(0, 80);
         }
       } else if (image) {
         image.removeAttribute("src");
         image.alt = "";
+        if (mediaWrap) mediaWrap.classList.remove("loading-image");
       }
 
       if (view === "card" && author && handle && text && timeline && stats) {
@@ -364,6 +394,8 @@ export function useBookmarkViewer() {
           <span>Bookmarks ${formatCount(bookmark.bookmarkCount)}</span>
         `;
       }
+
+      element.classList.remove("loading");
 
       const summaryText = lineClampText(
         bookmark.text || bookmark.authorName || bookmark.authorHandle || "Bookmark",
@@ -382,7 +414,7 @@ export function useBookmarkViewer() {
     const grid = gridRef.current;
     if (!viewport || !grid) return;
 
-    const view = activeView;
+    const view = activeViewRef.current;
     const feedModeActive = isVerticalFeedView(view);
     const viewportWidth = getViewportWidth();
     const viewportHeight = getViewportHeight();
@@ -448,7 +480,7 @@ export function useBookmarkViewer() {
         engine.activeMap.delete(visKey);
       }
     }
-  }, [activeView, renderCardContent]);
+  }, [renderCardContent]);
 
   const requestRender = useCallback(() => {
     const engine = engineRef.current;
@@ -507,10 +539,15 @@ export function useBookmarkViewer() {
     const weekBookmarksList: Bookmark[][] = [];
     const anchors: ScrubberAnchor[] = [];
 
+    const layoutMap = new Map<string, LayoutItem>()
+    for (const li of engine.layoutItems) {
+      layoutMap.set(li.bookmark.id, li)
+    }
+
     for (const week of weeks) {
       if (week.bookmarks.length === 0) continue;
       const firstBookmark = week.bookmarks[0];
-      const firstItem = engine.layoutItems.find((li) => li.bookmark.id === firstBookmark.id);
+      const firstItem = layoutMap.get(firstBookmark.id)
       const weekLabel = week.start.toLocaleDateString("en-US", {
         month: "long",
         day: "numeric",
@@ -536,7 +573,7 @@ export function useBookmarkViewer() {
 
     const yPositions: number[] = [];
     for (const bm of sorted) {
-      const item = engine.layoutItems.find((li) => li.bookmark.id === bm.id);
+      const item = layoutMap.get(bm.id)
       yPositions.push(item ? item.y : 0);
     }
 
@@ -547,18 +584,7 @@ export function useBookmarkViewer() {
     setScrubberAnchors(anchors);
   }, [activeView]);
 
-  const renderScrubberPreviewCard = (marker: ScrubberMarkerData) => {
-    const weekLabel = marker.weekStart
-      ? new Date(marker.weekStart).toLocaleDateString("en-US", { month: "short", day: "numeric" })
-      : "";
-    const countLabel = marker.weekCount != null ? ` • ${marker.weekCount}` : "";
-    return `
-      <div class="scrubber-preview-card">
-        <div class="scrubber-preview-kicker">${weekLabel ? `Week of ${weekLabel}${countLabel}` : escapeHtml(formatNavigatorSubline(marker.bookmark))}</div>
-        <div class="scrubber-preview-title">${escapeHtml(formatNavigatorDate(marker.bookmark))}</div>
-      </div>
-    `;
-  };
+  const renderScrubberPreviewCard = renderScrubberPreviewCardImpl;
 
   const findClosestScrubberIndexByProgress = (progress: number) => {
     const engine = engineRef.current;
@@ -829,7 +855,7 @@ export function useBookmarkViewer() {
 
     for (let index = 0; index < engine.config.POOL_SIZE; index += 1) {
       const element = document.createElement("div");
-      element.className = "grid-item";
+      element.className = "grid-item loading";
       element.style.display = "none";
       element.innerHTML = `
         <div class="grid-item-media">
@@ -876,6 +902,54 @@ export function useBookmarkViewer() {
     [resetViewportAndRebuild]
   );
 
+  const rebuildFeedForCurrentViewport = useCallback(() => {
+    const engine = engineRef.current;
+    const viewport = viewportRef.current;
+    const previousScrollTop = viewport?.scrollTop ?? 0;
+
+    engine.config.POOL_SIZE = isLowSpecDevice() ? 260 : 420;
+    engine.config.BUFFER = isLowSpecDevice() ? 320 : 600;
+    const viewportWidth = getViewportWidth();
+    engine.config.MEDIA_COLS = viewportWidth < 720 ? 2 : viewportWidth < 1100 ? 3 : 5;
+    engine.config.CARD_COLS = viewportWidth < 720 ? 1 : viewportWidth < 1200 ? 3 : 4;
+
+    createPool();
+    refreshDisplay(
+      allBookmarks,
+      activeFolder,
+      activeSearch,
+      activeFacetType,
+      activeFacetValue,
+      activeSort,
+      activeView
+    );
+
+    requestAnimationFrame(() => {
+      const nextViewport = viewportRef.current;
+      if (!nextViewport || !isVerticalFeedView(activeView)) return;
+      const maxScrollTop = Math.max(0, nextViewport.scrollHeight - nextViewport.clientHeight);
+      const nextScrollTop = clamp(previousScrollTop, 0, maxScrollTop);
+      nextViewport.scrollTop = nextScrollTop;
+      engine.feedScrollY = nextScrollTop;
+      engine.cameraOffset.y = nextScrollTop;
+      engine.targetOffset.y = nextScrollTop;
+      renderVisibleItems();
+      updateScrubberMarkerStyles();
+    });
+  }, [
+    activeFacetType,
+    activeFacetValue,
+    activeFolder,
+    activeSearch,
+    activeSort,
+    activeView,
+    allBookmarks,
+    createPool,
+    refreshDisplay,
+    renderVisibleItems,
+    updateScrubberMarkerStyles,
+  ]);
+
   const openLightbox = useCallback(
     (element: HTMLDivElement, bookmark: Bookmark) => {
       const engine = engineRef.current;
@@ -895,8 +969,7 @@ export function useBookmarkViewer() {
 
       const rect = element.getBoundingClientRect();
       const media = bookmark.images[0];
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
+      const { width: viewportWidth, height: viewportHeight } = getViewportSize();
       const targetFrame = getLightboxTargetFrame(media, viewportWidth, viewportHeight);
 
       const startX = rect.left;
@@ -959,7 +1032,7 @@ export function useBookmarkViewer() {
         playButton.addEventListener("click", (event) => {
           event.stopPropagation();
           window.open(bookmark.url, "_blank");
-        });
+        }, { once: true });
         clone.appendChild(playButton);
       }
 
@@ -1014,6 +1087,61 @@ export function useBookmarkViewer() {
     []
   );
 
+  const updateOpenLightboxFrame = useCallback((animateFrame = true) => {
+    const engine = engineRef.current;
+    const lightboxItem = engine.lightboxItem;
+    const clone = engine.lightboxClone;
+    const lightboxInfo = lightboxInfoRef.current;
+
+    if (!engine.lightboxOpen || !lightboxItem || !clone) return;
+    const media = lightboxItem.bookmark.images?.[0];
+    if (!media) return;
+
+    const { width: viewportWidth, height: viewportHeight } = getViewportSize();
+    const frame = getLightboxTargetFrame(media, viewportWidth, viewportHeight);
+    const nextTransform = `translate3d(${frame.x}px, ${frame.y}px, 0) scale(1, 1)`;
+
+    lightboxItem._endX = frame.x;
+    lightboxItem._endY = frame.y;
+    lightboxItem._endW = frame.width;
+    lightboxItem._endH = frame.height;
+
+    if (lightboxInfo) {
+      lightboxInfo.style.top = `${frame.infoTop}px`;
+    }
+
+    clone.style.transition = "none";
+    clone.style.transformOrigin = "top left";
+
+    if (lightboxItem.resizeAnimation) {
+      lightboxItem.resizeAnimation.stop();
+      lightboxItem.resizeAnimation = undefined;
+    }
+
+    if (!animateFrame || engine.lightboxAnimating) {
+      clone.style.width = `${frame.width}px`;
+      clone.style.height = `${frame.height}px`;
+      clone.style.transform = nextTransform;
+      return;
+    }
+
+    const animation = animate(
+      clone,
+      {
+        width: `${frame.width}px`,
+        height: `${frame.height}px`,
+        transform: nextTransform,
+      },
+      { duration: 0.18, ease: [0.22, 1, 0.36, 1] }
+    );
+    lightboxItem.resizeAnimation = animation;
+    animation.then(() => {
+      if (lightboxItem.resizeAnimation === animation) {
+        lightboxItem.resizeAnimation = undefined;
+      }
+    });
+  }, []);
+
   const closeLightbox = useCallback(() => {
     const engine = engineRef.current;
     const overlay = overlayRef.current;
@@ -1023,6 +1151,8 @@ export function useBookmarkViewer() {
     const { element } = engine.lightboxItem;
     const clone = engine.lightboxClone;
 
+    engine.lightboxItem.resizeAnimation?.stop();
+    engine.lightboxItem.resizeAnimation = undefined;
     clone?.querySelector(".play-pill")?.classList.remove("visible");
     overlay?.classList.remove("active");
     setLightboxOpen(false);
@@ -1069,8 +1199,13 @@ export function useBookmarkViewer() {
       engine.lightboxOpen = false;
       engine.lightboxItem = null;
       engine.lightboxAnimating = false;
+
+      if (engine.needsPostLightboxRelayout) {
+        engine.needsPostLightboxRelayout = false;
+        rebuildFeedForCurrentViewport();
+      }
     });
-  }, []);
+  }, [rebuildFeedForCurrentViewport]);
 
   const reloadBookmarks = useCallback(async () => {
     const response = await fetch(`/api/bookmarks?ts=${Date.now()}`);
@@ -1442,6 +1577,12 @@ export function useBookmarkViewer() {
     };
 
     const onWindowResize = () => {
+      if (engine.lightboxOpen) {
+        engine.needsPostLightboxRelayout = true;
+        updateOpenLightboxFrame(true);
+        return;
+      }
+
       engine.config.POOL_SIZE = isLowSpecDevice() ? 260 : 420;
       engine.config.BUFFER = isLowSpecDevice() ? 320 : 600;
       const viewportWidth = getViewportWidth();
@@ -1461,7 +1602,6 @@ export function useBookmarkViewer() {
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && engine.lightboxOpen) closeLightbox();
-      if (event.key === "Escape") setSortMenuOpen(false);
     };
 
     const onViewportKeyDown = (event: KeyboardEvent) => {
@@ -1534,7 +1674,7 @@ export function useBookmarkViewer() {
     viewport.addEventListener("click", onViewportClick);
     viewport.addEventListener("wheel", onWheel, { passive: false });
     viewport.addEventListener("scroll", syncFeedScrollState, { passive: true });
-    viewport.addEventListener("touchstart", onTouchStart);
+    viewport.addEventListener("touchstart", onTouchStart, { passive: true });
     viewport.addEventListener("touchmove", onTouchMove, { passive: false });
     viewport.addEventListener("touchend", onTouchEnd);
     viewport.addEventListener("keydown", onViewportKeyDown);
@@ -1576,8 +1716,23 @@ export function useBookmarkViewer() {
     renderVisibleItems,
     requestRender,
     showScrubberPreview,
+    updateOpenLightboxFrame,
     updateScrubberMarkerStyles,
   ]);
+
+  useEffect(() => {
+    const visualViewport = window.visualViewport;
+    if (!visualViewport) return;
+
+    const onVisualViewportResize = () => {
+      updateOpenLightboxFrame(true);
+    };
+
+    visualViewport.addEventListener("resize", onVisualViewportResize);
+    return () => {
+      visualViewport.removeEventListener("resize", onVisualViewportResize);
+    };
+  }, [updateOpenLightboxFrame]);
 
   useLayoutEffect(() => {
     const feedShell = feedShellRef.current;
@@ -1684,7 +1839,6 @@ export function useBookmarkViewer() {
       activeFacetValue,
       darkMode,
       sidebarOpen,
-      sortMenuOpen,
       syncStatusText,
       syncStatusTone,
       syncBusy,
@@ -1746,7 +1900,6 @@ export function useBookmarkViewer() {
         setTimeout(() => document.body.classList.remove("theme-transition"), 400);
       },
       setSidebarOpen,
-      setSortMenuOpen,
       applyFilter,
       applyView,
       applyFacet,

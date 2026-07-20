@@ -1,0 +1,138 @@
+{
+  "schemaVersion": 3,
+  "mode": "full",
+  "reactDetected": true,
+  "version": "0.8.1",
+  "ok": true,
+  "directory": "D:\\Downloads\\XBMarks\\Kairos\\next-app",
+  "diff": null,
+  "projects": [
+    {
+      "directory": "D:\\Downloads\\XBMarks\\Kairos\\next-app",
+      "packageRoot": "D:\\Downloads\\XBMarks\\Kairos\\next-app",
+      "framework": "nextjs",
+      "project": {
+        "rootDirectory": "D:\\Downloads\\XBMarks\\Kairos\\next-app",
+        "projectName": "kairos-next",
+        "reactVersion": "^19.1.0",
+        "reactMajorVersion": 19,
+        "tailwindVersion": "^4.3.3",
+        "zodVersion": null,
+        "zodMajorVersion": null,
+        "framework": "nextjs",
+        "hasTypeScript": true,
+        "hasReactCompiler": false,
+        "hasReactCompilerLintPlugin": false,
+        "hasTanStackQuery": false,
+        "hasSsrDependency": false,
+        "preactVersion": null,
+        "preactMajorVersion": null,
+        "hasReactNativeWorkspace": false,
+        "nextjsVersion": "^16.2.10",
+        "nextjsMajorVersion": 16,
+        "expoVersion": null,
+        "shopifyFlashListVersion": null,
+        "shopifyFlashListMajorVersion": null,
+        "hasReanimated": false,
+        "reanimatedVersion": null,
+        "isPreES2023Target": true,
+        "isStaticExport": false,
+        "sourceFileCount": 25
+      },
+      "diagnostics": [
+        {
+          "filePath": "components/BookmarksViewer.tsx",
+          "plugin": "react-doctor",
+          "rule": "prefer-html-dialog",
+          "severity": "warning",
+          "title": "Custom modal instead of dialog",
+          "message": "Keyboard users can tab out of this `role=\"dialog\"` modal because it has no built-in focus trapping, so use the native `<dialog>`, which gives you focus trapping, `Escape` to close, and the backdrop for free.",
+          "help": "Replace the wrapper with `<dialog>` and open it with `dialog.showModal()`. For the trigger, prefer `<button commandfor=\"id\" command=\"show-modal\">` (Chrome 135+), or a `useRef` with `dialogRef.current?.showModal()`.",
+          "line": 450,
+          "column": 7,
+          "offset": 16360,
+          "length": 13,
+          "endLine": 450,
+          "category": "Accessibility",
+          "matchByOccurrence": true,
+          "id": "components/BookmarksViewer.tsx::450:7::react-doctor/prefer-html-dialog::23a7ee4338b8baca76ce86a5d5b64938c6e86bebe5de358dbe9abbffb5ec6fc8",
+          "normalizedFilePath": "components/BookmarksViewer.tsx",
+          "tags": []
+        }
+      ],
+      "score": {
+        "score": 90,
+        "label": "Great",
+        "rules": {
+          "react-doctor/prefer-html-dialog": {
+            "priority": 38,
+            "tier": "P3"
+          }
+        }
+      },
+      "skippedChecks": [],
+      "analyzedFiles": [
+        "app/api/bookmarks/route.ts",
+        "app/api/reindex/route.ts",
+        "app/api/status/route.ts",
+        "app/api/sync/route.ts",
+        "app/layout.tsx",
+        "app/page.tsx",
+        "components/BookmarksViewer.tsx",
+        "components/ui/proximity-sidebar.tsx",
+        "components/ui/sort-picker-dial-config.ts",
+        "components/ui/sort-picker-dial.tsx",
+        "components/ui/sort-picker.tsx",
+        "components/ui/squircle-clip.tsx",
+        "hooks/useBookmarkViewer.ts",
+        "lib/bookmark-utils.ts",
+        "lib/config.js",
+        "lib/export-bookmarks.js",
+        "lib/icons.ts",
+        "lib/native-config.ts",
+        "lib/server-jobs.ts",
+        "lib/sync-folders.js",
+        "lib/types.ts",
+        "lib/utils.ts",
+        "next.config.ts",
+        "postcss.config.mjs",
+        "types/flubber.d.ts"
+      ],
+      "analyzedFileCount": 25,
+      "complete": true,
+      "scannedFileCount": 25,
+      "elapsedMilliseconds": 10526.386900000001
+    }
+  ],
+  "diagnostics": [
+    {
+      "filePath": "components/BookmarksViewer.tsx",
+      "plugin": "react-doctor",
+      "rule": "prefer-html-dialog",
+      "severity": "warning",
+      "title": "Custom modal instead of dialog",
+      "message": "Keyboard users can tab out of this `role=\"dialog\"` modal because it has no built-in focus trapping, so use the native `<dialog>`, which gives you focus trapping, `Escape` to close, and the backdrop for free.",
+      "help": "Replace the wrapper with `<dialog>` and open it with `dialog.showModal()`. For the trigger, prefer `<button commandfor=\"id\" command=\"show-modal\">` (Chrome 135+), or a `useRef` with `dialogRef.current?.showModal()`.",
+      "line": 450,
+      "column": 7,
+      "offset": 16360,
+      "length": 13,
+      "endLine": 450,
+      "category": "Accessibility",
+      "matchByOccurrence": true,
+      "id": "components/BookmarksViewer.tsx::450:7::react-doctor/prefer-html-dialog::23a7ee4338b8baca76ce86a5d5b64938c6e86bebe5de358dbe9abbffb5ec6fc8",
+      "normalizedFilePath": "components/BookmarksViewer.tsx",
+      "tags": []
+    }
+  ],
+  "summary": {
+    "errorCount": 0,
+    "warningCount": 1,
+    "affectedFileCount": 1,
+    "totalDiagnosticCount": 1,
+    "score": 90,
+    "scoreLabel": "Great"
+  },
+  "elapsedMilliseconds": 10559.9689,
+  "error": null
+}

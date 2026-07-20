@@ -1,3 +1,5 @@
+import { DialRoot } from "dialkit";
+import "dialkit/styles.css";
 import type { Metadata } from "next";
 import { Host_Grotesk } from "next/font/google";
 import "./globals.css";
@@ -20,7 +22,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={hostGrotesk.className}>{children}</body>
+      <body className={hostGrotesk.className}>
+        <DialRoot defaultOpen />
+        {children}
+      </body>
     </html>
   );
 }
