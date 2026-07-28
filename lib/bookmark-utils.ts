@@ -1,4 +1,12 @@
-import type { Bookmark, FacetType, SortMode, ViewMode } from "./types";
+import type {
+  Bookmark,
+  FacetType,
+  SortConfig,
+  SortDirection,
+  SortField,
+  SortMode,
+  ViewMode,
+} from "./types";
 
 const DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
   month: "short",
@@ -118,10 +126,55 @@ export const isLowSpecDevice = () => {
   return memory <= 4 || cores <= 4 || window.innerWidth < 900;
 };
 
-export const getSortLabel = (sortValue: SortMode) => {
+export const SORT_FIELDS: { value: SortField; label: string }[] = [
+  { value: "bookmarkedAt", label: "Bookmarked" },
+  { value: "postedAt", label: "Posted" },
+  { value: "likeCount", label: "Likes" },
+];
+
+export const getDefaultDirection = (field: SortField): SortDirection =>
+  field === "postedAt" || field === "bookmarkedAt" ? "desc" : "desc";
+
+export const getFieldDirectionOptions = (field: SortField): { value: SortDirection; label: string; arrow: string }[] =>
+  field === "postedAt" || field === "bookmarkedAt"
+    ? [
+        { value: "desc", label: "Latest", arrow: "ArrowDownDoubleIcon" },
+        { value: "asc", label: "Oldest", arrow: "ArrowUpDoubleIcon" },
+      ]
+    : [
+        { value: "desc", label: "Most", arrow: "ArrowDownDoubleIcon" },
+        { value: "asc", label: "Least", arrow: "ArrowUpDoubleIcon" },
+      ];
+
+export const getFieldLabel = (field: SortField): string =>
+  SORT_FIELDS.find((f) => f.value === field)?.label ?? field;
+
+export const getDirectionLabel = (field: SortField, direction: SortDirection): string =>
+  getFieldDirectionOptions(field).find((d) => d.value === direction)?.label ?? direction;
+
+export const getDirectionArrow = (field: SortField, direction: SortDirection): string =>
+  getFieldDirectionOptions(field).find((d) => d.value === direction)?.arrow ?? "ArrowDownDoubleIcon";
+
+export const formatSortRule = (field: SortField, direction: SortDirection): string =>
+  `${getFieldLabel(field)} ${getDirectionArrow(field, direction)} ${getDirectionLabel(field, direction)}`;
+
+export const getSortLabel = (sortValue: SortMode | SortConfig) => {
+  if (Array.isArray(sortValue)) {
+    if (sortValue.length === 0) return "Default sort";
+    const parts = sortValue.map((r) => `${getFieldLabel(r.field)} ${getDirectionArrow(r.field, r.direction)} ${getDirectionLabel(r.field, r.direction)}`);
+    return parts.join(", ");
+  }
   if (sortValue === "oldest") return "Oldest first";
   if (sortValue === "liked") return "Most liked";
   return "Most recent";
+};
+
+export const DEFAULT_SORT: SortConfig = [{ field: "bookmarkedAt", direction: "desc" }];
+
+export const isLatestFirstSort = (config: SortConfig): boolean => {
+  if (config.length === 0) return true;
+  const r = config[0];
+  return (r.field === "bookmarkedAt" || r.field === "postedAt") && r.direction === "desc";
 };
 
 export const isVerticalFeedView = (activeView: ViewMode) =>
@@ -169,15 +222,28 @@ export const matchesActiveFacet = (
   return true;
 };
 
+function getComparableValue(bookmark: Bookmark, field: SortField): number {
+  if (field === "postedAt") {
+    return new Date(bookmark.postedAt || 0).getTime();
+  }
+  if (field === "bookmarkedAt") {
+    const date = bookmark.bookmarkedAt || bookmark.syncedAt || bookmark.postedAt;
+    return new Date(date || 0).getTime();
+  }
+  return bookmark[field] || 0;
+}
+
 export const getFilteredBookmarks = (
   allBookmarks: Bookmark[],
   activeFolder: string,
   activeSearch: string,
   activeFacetType: FacetType,
   activeFacetValue: string,
-  activeSort: SortMode,
+  activeSort: SortConfig,
   activeView: ViewMode
 ) => {
+  const rules = activeSort.length > 0 ? activeSort : DEFAULT_SORT;
+
   const folderFiltered =
     activeFolder === "All"
       ? allBookmarks
@@ -206,17 +272,13 @@ export const getFilteredBookmarks = (
   );
 
   const sorted = [...faceted].sort((a, b) => {
-    if (activeSort === "liked") return (b.likeCount || 0) - (a.likeCount || 0);
-
-    const leftDate = new Date(
-      a.bookmarkedAt || a.syncedAt || a.postedAt || 0
-    ).getTime();
-    const rightDate = new Date(
-      b.bookmarkedAt || b.syncedAt || b.postedAt || 0
-    ).getTime();
-
-    if (activeSort === "oldest") return leftDate - rightDate;
-    return rightDate - leftDate;
+    for (const rule of rules) {
+      const aVal = getComparableValue(a, rule.field);
+      const bVal = getComparableValue(b, rule.field);
+      const diff = aVal - bVal;
+      if (diff !== 0) return rule.direction === "desc" ? -diff : diff;
+    }
+    return 0;
   });
 
   if (activeView === "media") {

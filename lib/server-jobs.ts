@@ -7,6 +7,10 @@ import {
   getBookmarksOutputPath,
   getRepoRoot,
 } from "@/lib/native-config";
+import {
+  readCookieConfig,
+  describeCookieMode,
+} from "@/lib/cookie-config";
 
 const APP_ROOT = getRepoRoot();
 const FT_CLI = path.join(APP_ROOT, "node_modules", "fieldtheory", "bin", "ft.mjs");
@@ -49,6 +53,12 @@ export function readStatusSnapshot() {
     {}
   );
 
+  const cookieConfig = readCookieConfig();
+  const runtimeMode = describeCookieMode(cookieConfig);
+  const fallbackMode =
+    process.env.X_CT0 && process.env.X_AUTH_TOKEN ? "manual-firefox" : "missing";
+  const cookieMode = runtimeMode !== "missing" ? runtimeMode : fallbackMode;
+
   return {
     running: jobState.running,
     type: jobState.type,
@@ -59,8 +69,12 @@ export function readStatusSnapshot() {
     dataDir: getDataDir(),
     lastSyncedAt:
       meta.lastRunAt || meta.lastIncrementalSyncAt || meta.lastFullSyncAt || null,
-    cookieMode:
-      process.env.X_CT0 && process.env.X_AUTH_TOKEN ? "manual-firefox" : "missing",
+    cookieMode,
+    cookieConfig: {
+      source: cookieConfig.source,
+      browser: cookieConfig.browser || null,
+      hasCookies: Boolean(cookieConfig.ct0 && cookieConfig.authToken),
+    },
   };
 }
 
@@ -144,20 +158,36 @@ async function withJobLock<T>(type: string, job: () => Promise<T>): Promise<T> {
 
 export async function syncBookmarks() {
   return withJobLock("sync", async () => {
-    const ct0 = getRequiredEnv("X_CT0");
-    const authToken = getRequiredEnv("X_AUTH_TOKEN");
+    const config = readCookieConfig();
 
-    await runNodeScript([
-      FT_CLI,
-      "sync",
-      "--cookies",
-      ct0,
-      authToken,
-      "--max-minutes",
-      "30",
-      "--yes",
-      "--no-media",
-    ]);
+    let ftArgs: string[];
+
+    if (config.source === "auto" && config.browser) {
+      ftArgs = [
+        FT_CLI, "sync",
+        "--browser", config.browser,
+        "--max-minutes", "30",
+        "--yes", "--no-media",
+      ];
+    } else if (config.source === "manual" && config.ct0 && config.authToken) {
+      ftArgs = [
+        FT_CLI, "sync",
+        "--cookies", config.ct0, config.authToken,
+        "--max-minutes", "30",
+        "--yes", "--no-media",
+      ];
+    } else {
+      const ct0 = getRequiredEnv("X_CT0");
+      const authToken = getRequiredEnv("X_AUTH_TOKEN");
+      ftArgs = [
+        FT_CLI, "sync",
+        "--cookies", ct0, authToken,
+        "--max-minutes", "30",
+        "--yes", "--no-media",
+      ];
+    }
+
+    await runNodeScript(ftArgs);
 
     let folderSyncWarning: string | null = null;
     try {

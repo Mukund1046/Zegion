@@ -13,6 +13,22 @@ This is a self-contained Next.js app for browsing exported X bookmarks. The UI i
 
 Typical local flow: `npm install`, copy `.env.example` to `.env` with your X cookies, run `npm run dev`, then use the Sync / Re-index buttons in the UI.
 
+## Field Theory Classification on Windows
+
+The app lives under `zeleon`; run Field Theory commands from that directory. In PowerShell, avoid plain `ft` because it is a built-in alias for `Format-Table`. Prefer the local Node entrypoint:
+
+- `node node_modules\fieldtheory\bin\ft.mjs classify --engine codex`
+- `node node_modules\fieldtheory\bin\ft.mjs classify-domains --engine codex`
+- `node lib\export-bookmarks.js`
+
+The local `fieldtheory` install has a Windows-specific Codex launcher patch in `node_modules\fieldtheory\dist\engine.js`. Codex must be invoked through `process.execPath` plus `C:\Users\hp\AppData\Roaming\npm\node_modules\@openai\codex\bin\codex.js`; spawning bare `codex` from Node can fail with `spawnSync codex EPERM` even though `codex --version` works in PowerShell. If `npm install` or dependency cleanup overwrites `node_modules`, restore that patch before running LLM classification.
+
+Check classification distribution before and after exports with:
+
+```powershell
+node -e "const d=require('./data/output/bookmarks-data.json'); const cats={}; d.bookmarks.forEach(b=>{const c=b.category||'unclassified'; cats[c]=(cats[c]||0)+1}); console.log('Categories:', cats)"
+```
+
 ## Coding Style & Naming Conventions
 
 Follow the existing JavaScript/TypeScript style: 2-space indentation, semicolons, `const`/`let`, and small helper functions. Use `camelCase` for variables and functions, `UPPER_SNAKE_CASE` for true constants, and `kebab-case` for script filenames. Keep browser logic dependency-light and colocated unless a file becomes meaningfully separate.

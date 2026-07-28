@@ -41,6 +41,10 @@ export interface BookmarksPayload {
 
 export type ViewMode = "media" | "card";
 export type SortMode = "recent" | "oldest" | "liked";
+export type SortField = "postedAt" | "bookmarkedAt" | "likeCount";
+export type SortDirection = "asc" | "desc";
+export type SortRule = { field: SortField; direction: SortDirection };
+export type SortConfig = SortRule[];
 export type FacetType =
   | "all"
   | "folder"
@@ -54,12 +58,19 @@ export interface PersistedState {
   darkMode?: boolean;
   activeFolder?: string;
   activeView?: ViewMode;
-  activeSort?: SortMode;
+  activeSort?: SortMode | SortConfig;
   activeSearch?: string;
   activeFacetType?: FacetType;
   activeFacetValue?: string;
   sidebarOpen?: boolean;
   sidebarSections?: Record<string, boolean>;
+  feedScrollY?: number;
+}
+
+export interface CookieConfigSnapshot {
+  source: "auto" | "manual";
+  browser: string | null;
+  hasCookies: boolean;
 }
 
 export interface StatusSnapshot {
@@ -72,4 +83,5 @@ export interface StatusSnapshot {
   dataDir: string;
   lastSyncedAt: string | null;
   cookieMode: string;
+  cookieConfig?: CookieConfigSnapshot;
 }

@@ -2,7 +2,6 @@
 
 import { Slot } from '@radix-ui/react-slot'
 import { getSvgPath } from 'figma-squircle'
-import { interpolate } from 'flubber'
 import { LazyMotion, domAnimation, m as _m } from 'motion/react'
 import {
   animate,
@@ -17,23 +16,54 @@ import {
 } from 'motion/react'
 import React, { useCallback, useEffect, useState } from 'react'
 import useMeasure from 'react-use-measure'
+import { HugeiconsIcon } from '@hugeicons/react'
+import {
+  PlusSignIcon,
+  CheckIcon,
+  ArrowDataTransferHorizontalIcon,
+  Delete01Icon,
+  Edit01Icon,
+  ChevronDownIcon,
+  ArrowDownDoubleIcon,
+  ArrowUpDoubleIcon,
+} from '@hugeicons/core-free-icons'
 
+import {
+  DEFAULT_SORT,
+  getDefaultDirection,
+  getDirectionArrow,
+  getFieldDirectionOptions,
+  getFieldLabel,
+  SORT_FIELDS,
+} from '@/lib/bookmark-utils'
+import { Highlight, HighlightItem } from '@/components/animate-ui/primitives/effects/highlight'
+import type { SortConfig, SortDirection, SortField } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 const m = _m!
-
-type SortMode = 'recent' | 'oldest' | 'liked'
-
-const PEN_PATH =
-  'M3.78181 16.3092L3 21L7.69086 20.2182C8.50544 20.0825 9.25725 19.6956 9.84119 19.1116L20.4198 8.53288C21.1934 7.75922 21.1934 6.5049 20.4197 5.73126L18.2687 3.58024C17.495 2.80658 16.2406 2.80659 15.4669 3.58027L4.88841 14.159C4.30447 14.7429 3.91757 15.4947 3.78181 16.3092Z'
-const TICK_PATH =
-  'M7.959 20.513L1.592 12.872L3.128 11.592L8.041 17.487L20.947 3.587L22.413 4.948L7.959 20.513Z'
 
 const OPEN_GAP = 8
 const CORNER_RADIUS = 12
 const GAP_SPRING = { stiffness: 200, damping: 28, mass: 1 } as SpringOptions
 const ICON_SPRING = { stiffness: 200, damping: 28 } as SpringOptions
 const SWAY_SPRING = { stiffness: 200, damping: 24 } as SpringOptions
+
+type PopoverStyle = {
+  cornerRadius?: number
+  cornerSmoothing?: number
+  paddingTop?: number
+  paddingLeft?: number
+  paddingRight?: number
+  paddingBottom?: number
+  titleFontSize?: number
+  titleTransform?: 'uppercase' | 'lowercase' | 'capitalize' | 'none'
+  titlePaddingX?: number
+  titlePaddingTop?: number
+  titlePaddingBottom?: number
+  hoverPaddingX?: number
+  hoverPaddingY?: number
+  hoverBorderRadius?: number
+}
 
 export type SortPickerDialValues = {
   Motion?: {
@@ -77,6 +107,8 @@ export type SortPickerDialValues = {
     dashColorDark?: string
     borderColor?: string
   }
+  AddPopover?: PopoverStyle
+  FieldPopover?: PopoverStyle
   Sorting?: {
     defaultSort?: string
     autoApply?: boolean
@@ -84,16 +116,13 @@ export type SortPickerDialValues = {
 }
 
 export type SortPickerProps = {
-  value: SortMode
-  onChange?: (value: SortMode) => void
+  value: SortConfig
+  onChange?: (value: SortConfig) => void
   defaultOpen?: boolean
   disabled?: boolean
   className?: string
   dial?: SortPickerDialValues
 }
-
-type SortCategory = 'date' | 'likes'
-type SortDirection = 'newest' | 'oldest' | 'most'
 
 type SquircleSegmentProps = {
   asChild?: boolean
@@ -161,39 +190,11 @@ const SquircleSegment = ({
   )
 }
 
-const CATEGORIES: { value: SortCategory; label: string }[] = [
-  { value: 'date', label: 'Date' },
-  { value: 'likes', label: 'Likes' },
-]
-
-const DIRECTIONS: Record<SortCategory, { value: SortDirection; label: string }[]> = {
-  date: [
-    { value: 'newest', label: 'Newest' },
-    { value: 'oldest', label: 'Oldest' },
-  ],
-  likes: [{ value: 'most', label: 'Most' }],
-}
-
-const toSortMode = (
-  category: SortCategory,
-  direction: SortDirection
-): SortMode => {
-  if (category === 'date' && direction === 'newest') return 'recent'
-  if (category === 'date' && direction === 'oldest') return 'oldest'
-  return 'liked'
-}
-
-const fromSortMode = (
-  mode: SortMode
-): { category: SortCategory; direction: SortDirection } => {
-  if (mode === 'recent') return { category: 'date', direction: 'newest' }
-  if (mode === 'oldest') return { category: 'date', direction: 'oldest' }
-  return { category: 'likes', direction: 'most' }
-}
-
 type SelectableFieldProps = {
   label: string
   icon?: string
+  chevron?: boolean
+  isPopoverOpen?: boolean
   onClick: () => void
   isEditing: boolean
   swayX: MotionValue<number>
@@ -212,30 +213,37 @@ const useIsDark = () => {
   return isDark
 }
 
-const SelectableField = ({
+const SelectableField = React.forwardRef<HTMLButtonElement, SelectableFieldProps>(({
   label,
   icon,
+  chevron,
+  isPopoverOpen,
   onClick,
   isEditing,
   swayX,
   dial,
-}: SelectableFieldProps) => {
+}, ref) => {
   const isDark = useIsDark()
   const c = dial?.Colors
   const t = dial?.Typography
+  const [isHovered, setIsHovered] = useState(false)
 
   const textColor = isDark ? (c?.textColorDark ?? '#FFFFFF') : (c?.textColor ?? '#000000')
   const fontSize = t?.fontSize
   const fontWeight = t?.fontWeight
   const letterSpacing = t?.letterSpacing != null ? `${t.letterSpacing}px` : undefined
   const noWrap = t?.noWrap ?? true
+  const showChevron = chevron && isEditing && (isPopoverOpen || isHovered)
 
   return (
     <m.button
+      ref={ref}
       data-slot="sort-picker-field"
       type="button"
       onClick={onClick}
       disabled={!isEditing}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       style={{
         x: swayX,
         color: textColor,
@@ -244,13 +252,32 @@ const SelectableField = ({
         ...(letterSpacing != null ? { letterSpacing } : {}),
         ...(noWrap ? { whiteSpace: 'nowrap' as const } : {}),
       }}
-      className="flex h-full w-full cursor-pointer items-center justify-center gap-1 border-0 bg-transparent text-center font-semibold text-black outline-none disabled:cursor-default dark:text-white"
+      className="flex h-full w-full cursor-pointer items-center justify-center border-0 bg-transparent text-center font-semibold text-black outline-none disabled:cursor-default dark:text-white"
     >
       {icon && <span className="text-sm">{icon}</span>}
       <span>{label}</span>
+      {chevron && isEditing && (
+        <m.span
+          animate={{
+            width: showChevron ? 18 : 0,
+            opacity: showChevron ? 1 : 0,
+            marginLeft: showChevron ? 4 : 0,
+            rotate: isPopoverOpen ? 180 : 0,
+          }}
+          transition={{ type: 'spring', stiffness: 300, damping: 30, mass: 0.5 }}
+          style={{ overflow: 'hidden', display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}
+        >
+          <HugeiconsIcon icon={ChevronDownIcon} size={dial?.Layout?.iconSize ?? 18} color="currentColor" strokeWidth={dial?.Layout?.iconStrokeWidth ?? 2.5} />
+        </m.span>
+      )}
     </m.button>
   )
-}
+})
+SelectableField.displayName = 'SelectableField'
+
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/animate-ui/components/radix/popover'
+
+
 
 function SortPicker({
   value,
@@ -260,11 +287,14 @@ function SortPicker({
   className,
   dial,
 }: SortPickerProps) {
-  const { category, direction } = fromSortMode(value)
   const [isEditing, setIsEditing] = useState(defaultOpen)
-  const [localCategory, setLocalCategory] = useState<SortCategory>(category)
-  const [localDirection, setLocalDirection] =
-    useState<SortDirection>(direction)
+  const [localRules, setLocalRules] = useState<SortConfig>(value)
+  const [openFieldMenuIndex, setOpenFieldMenuIndex] = useState<number | null>(null)
+  const allFieldsUsed = localRules.length >= SORT_FIELDS.length
+
+  useEffect(() => {
+    if (!isEditing) setLocalRules(value)
+  }, [value, isEditing])
 
   const shouldReduceMotion = useReducedMotion()
   const isDark = useIsDark()
@@ -273,6 +303,8 @@ function SortPicker({
   const motionConfig = dial?.Motion
   const c = dial?.Colors
   const i = dial?.Interaction
+  const ap = dial?.AddPopover
+  const fp = dial?.FieldPopover
 
   const openGapVal = l?.openGap ?? OPEN_GAP
   const cornerRadiusVal = l?.cornerRadius ?? CORNER_RADIUS
@@ -282,6 +314,34 @@ function SortPicker({
   const iconSz = l?.iconSize ?? 18
   const iconStrokeVal = l?.iconStrokeWidth ?? 2.5
   const cornerSm = l?.cornerSmoothing ?? 1
+
+  const addPopoverCornerRadius = ap?.cornerRadius ?? 14
+  const addPopoverPaddingTop = ap?.paddingTop ?? 4
+  const addPopoverPaddingLeft = ap?.paddingLeft ?? 4
+  const addPopoverPaddingRight = ap?.paddingRight ?? 4
+  const addPopoverPaddingBottom = ap?.paddingBottom ?? 4
+  const addPopoverTitleFontSize = ap?.titleFontSize ?? 12
+  const addPopoverTitleTransform = ap?.titleTransform ?? 'capitalize'
+  const addPopoverHoverPaddingX = ap?.hoverPaddingX ?? 12
+  const addPopoverHoverPaddingY = ap?.hoverPaddingY ?? 4
+  const addPopoverHoverBorderRadius = ap?.hoverBorderRadius ?? 12
+  const addPopoverTitlePaddingX = ap?.titlePaddingX ?? 12
+  const addPopoverTitlePaddingTop = ap?.titlePaddingTop ?? 6
+  const addPopoverTitlePaddingBottom = ap?.titlePaddingBottom ?? 2
+
+  const fieldPopoverCornerRadius = fp?.cornerRadius ?? 14
+  const fieldPopoverPaddingTop = fp?.paddingTop ?? 4
+  const fieldPopoverPaddingLeft = fp?.paddingLeft ?? 4
+  const fieldPopoverPaddingRight = fp?.paddingRight ?? 4
+  const fieldPopoverPaddingBottom = fp?.paddingBottom ?? 4
+  const fieldPopoverTitleFontSize = fp?.titleFontSize ?? 12
+  const fieldPopoverTitleTransform = fp?.titleTransform ?? 'capitalize'
+  const fieldPopoverHoverPaddingX = fp?.hoverPaddingX ?? 12
+  const fieldPopoverHoverPaddingY = fp?.hoverPaddingY ?? 4
+  const fieldPopoverHoverBorderRadius = fp?.hoverBorderRadius ?? 12
+  const fieldPopoverTitlePaddingX = fp?.titlePaddingX ?? 12
+  const fieldPopoverTitlePaddingTop = fp?.titlePaddingTop ?? 6
+  const fieldPopoverTitlePaddingBottom = fp?.titlePaddingBottom ?? 2
 
   const gapSpringStiffness = motionConfig?.gapSpringStiffness
   const gapSpringDamping = motionConfig?.gapSpringDamping
@@ -297,11 +357,9 @@ function SortPicker({
 
   const ogMotion = useMotionValue(openGapVal)
   const crMotion = useMotionValue(cornerRadiusVal)
-  const isMotion = useMotionValue(iconStrokeVal)
 
   useEffect(() => { ogMotion.set(openGapVal) }, [openGapVal, ogMotion])
   useEffect(() => { crMotion.set(cornerRadiusVal) }, [cornerRadiusVal, crMotion])
-  useEffect(() => { isMotion.set(iconStrokeVal) }, [iconStrokeVal, isMotion])
 
   const gap = useMotionValue(0)
 
@@ -361,59 +419,58 @@ function SortPicker({
     return () => ctrl.stop()
   }, [isEditing, shouldReduceMotion, iconProgress, iconSpringStiffness, iconSpringDamping])
 
-  const iconPath = useTransform(iconProgress, [0, 1], [PEN_PATH, TICK_PATH], {
-    clamp: true,
-    mixer: (from, to) => interpolate(from, to, { maxSegmentLength: 1 }),
-  })
-  const iconStrokeWidth = useTransform(() => {
-    const p = iconProgress.get()
-    const s = isMotion.get()
-    return p * s
-  })
-  const iconStrokeOpacity = useTransform(iconProgress, [0, 1], [0, 1], {
-    clamp: true,
-  })
-  const iconDashOpacity = useTransform(
-    iconProgress,
-    [0, 0.4],
-    [1, 0],
-    { clamp: true }
-  )
+  const changeField = useCallback((ruleIndex: number, newField: SortField) => {
+    setLocalRules((prev) => {
+      const currentField = prev[ruleIndex].field
+      if (newField === currentField) return prev
 
-  const cycleCategory = useCallback(() => {
-    setLocalCategory((prev) => {
-      const idx = CATEGORIES.findIndex((c) => c.value === prev)
-      return CATEGORIES[(idx + 1) % CATEGORIES.length].value
+      const otherIndex = prev.findIndex((r, i) => i !== ruleIndex && r.field === newField)
+
+      if (otherIndex === -1) {
+        const next = [...prev]
+        next[ruleIndex] = { field: newField, direction: prev[ruleIndex].direction }
+        return next
+      }
+
+      const next = [...prev]
+      const temp = next[ruleIndex]
+      next[ruleIndex] = next[otherIndex]
+      next[otherIndex] = temp
+      return next
     })
   }, [])
 
-  useEffect(() => {
-    const dirs = DIRECTIONS[localCategory]
-    setLocalDirection(dirs[0].value)
-  }, [localCategory])
-
-  const cycleDirection = useCallback(() => {
-    setLocalDirection((prev) => {
-      const dirs = DIRECTIONS[localCategory]
-      const idx = dirs.findIndex((d) => d.value === prev)
-      return dirs[(idx + 1) % dirs.length].value
+  const removeField = useCallback((ruleIndex: number) => {
+    setLocalRules((prev) => {
+      if (prev.length <= 1) {
+        return [{ field: "bookmarkedAt", direction: "desc" }] as SortConfig
+      }
+      return prev.filter((_, i) => i !== ruleIndex)
     })
-  }, [localCategory])
+  }, [])
 
-  const categoryLabel =
-    CATEGORIES.find((c) => c.value === localCategory)?.label ?? 'Date'
-  const directionLabel =
-    DIRECTIONS[localCategory].find((d) => d.value === localDirection)
-      ?.label ?? 'Newest'
+  const cycleDirection = useCallback((ruleIndex: number) => {
+    setLocalRules((prev) => {
+      const rule = prev[ruleIndex]
+      const dirs = getFieldDirectionOptions(rule.field)
+      const idx = dirs.findIndex(d => d.value === rule.direction)
+      const next = dirs[(idx + 1) % dirs.length].value
+      const nextRules = [...prev]
+      nextRules[ruleIndex] = { ...rule, direction: next }
+      return nextRules
+    })
+  }, [])
 
-  const currentSortMode = toSortMode(localCategory, localDirection)
+  const addField = useCallback((field: SortField) => {
+    setLocalRules((prev) => [...prev, { field, direction: getDefaultDirection(field) }])
+  }, [])
 
   const toggleEdit = () => {
     if (disabled) return
     const next = !isEditing
     setIsEditing(next)
     if (!next) {
-      onChange?.(currentSortMode)
+      onChange?.(localRules)
     }
   }
 
@@ -443,36 +500,218 @@ function SortPicker({
       )}
       style={{ opacity: disabled ? disabledOp : undefined }}
     >
-      <SquircleSegment
-        leftRadius={cornerRadiusVal}
-        rightRadius={innerRadius}
-        cornerSmoothing={cornerSm}
-        className="flex shrink-0 h-12 items-center px-3 bg-[#F4F4F9] dark:bg-[#262626]"
-        style={segmentStyle}
-      >
-        <SelectableField
-          label={categoryLabel}
-          onClick={cycleCategory}
-          isEditing={isEditing}
-          swayX={swayX}
-          dial={dial}
-        />
-      </SquircleSegment>
-      <SquircleSegment
-        leftRadius={innerRadius}
-        rightRadius={innerRadius}
-        cornerSmoothing={cornerSm}
-        style={{ marginLeft: segmentSpacing, ...segmentStyle }}
-        className="flex shrink-0 h-12 items-center px-3 bg-[#F4F4F9] dark:bg-[#262626]"
-      >
-        <SelectableField
-          label={directionLabel}
-          onClick={cycleDirection}
-          isEditing={isEditing}
-          swayX={swayX}
-          dial={dial}
-        />
-      </SquircleSegment>
+      {localRules.map((rule, i) => (
+        <React.Fragment key={i}>
+          <SquircleSegment
+            leftRadius={i === 0 ? cornerRadiusVal : innerRadius}
+            rightRadius={innerRadius}
+            cornerSmoothing={cornerSm}
+            className="flex shrink-0 h-12 items-center px-3 bg-[#F4F4F9] dark:bg-[#262626]"
+            style={i > 0 ? { marginLeft: segmentSpacing, ...segmentStyle } : segmentStyle}
+          >
+            <Popover open={openFieldMenuIndex === i} onOpenChange={(open) => setOpenFieldMenuIndex(open ? i : null)}>
+              <PopoverTrigger asChild>
+                <SelectableField
+                  label={getFieldLabel(rule.field)}
+                  chevron
+                  isPopoverOpen={openFieldMenuIndex === i}
+                  onClick={() => {}}
+                  isEditing={isEditing}
+                  swayX={swayX}
+                  dial={dial}
+                />
+              </PopoverTrigger>
+              <PopoverContent
+                align="start"
+                sideOffset={8}
+                className="min-w-[180px] w-auto border-0 shadow-lg"
+                style={{
+                  backgroundColor: segBg,
+                  borderRadius: `${fieldPopoverCornerRadius}px`,
+                  padding: `${fieldPopoverPaddingTop}px ${fieldPopoverPaddingRight}px ${fieldPopoverPaddingBottom}px ${fieldPopoverPaddingLeft}px`,
+                }}
+              >
+                <div className="flex flex-col gap-1" style={{ maxHeight: '320px' }}>
+                  <div
+                    className="flex-shrink-0 font-medium text-[#868593] tracking-wider"
+                    style={{ padding: `${fieldPopoverTitlePaddingTop}px ${fieldPopoverTitlePaddingX}px ${fieldPopoverTitlePaddingBottom}px`, fontSize: fieldPopoverTitleFontSize, textTransform: fieldPopoverTitleTransform }}
+                  >
+                    Select field
+                  </div>
+                  <div className="flex-1 min-h-0 overflow-y-auto">
+                    <div className="flex flex-col gap-1">
+                      {SORT_FIELDS.map((f) => {
+                        const otherIndex = localRules.findIndex((r, j) => j !== i && r.field === f.value)
+                        const isCurrent = f.value === rule.field
+                        return (
+                          <div
+                            key={f.value}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => {
+                              changeField(i, f.value)
+                              setOpenFieldMenuIndex(null)
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault()
+                                changeField(i, f.value)
+                                setOpenFieldMenuIndex(null)
+                              }
+                            }}
+                            className="flex w-full items-center gap-2 text-left text-sm font-medium outline-none min-h-[36px] cursor-pointer transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+                            style={{
+                              padding: `${fieldPopoverHoverPaddingY}px ${fieldPopoverHoverPaddingX}px`,
+                              borderRadius: `${fieldPopoverHoverBorderRadius}px`,
+                              color: isCurrent
+                                ? (isDark ? '#FFFFFF' : '#000000')
+                                : otherIndex !== -1
+                                  ? (isDark ? '#888888' : '#868593')
+                                  : (isDark ? '#FFFFFF' : '#000000'),
+                            }}
+                          >
+                            {isCurrent && <HugeiconsIcon icon={CheckIcon} size={iconSz} color="currentColor" strokeWidth={iconStrokeVal} />}
+                            {!isCurrent && otherIndex !== -1 && <HugeiconsIcon icon={ArrowDataTransferHorizontalIcon} size={iconSz} color="currentColor" strokeWidth={iconStrokeVal} />}
+                            <span>{f.label}</span>
+                          </div>
+                        )
+                      })}
+                      {localRules.length > 1 && (
+                        <>
+                          <div className="border-t border-[#868593]/20 mx-3" />
+                          <div
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => {
+                              removeField(i)
+                              setOpenFieldMenuIndex(null)
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault()
+                                removeField(i)
+                                setOpenFieldMenuIndex(null)
+                              }
+                            }}
+                            className="flex w-full items-center gap-2 text-left text-sm font-medium outline-none min-h-[36px] cursor-pointer transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+                            style={{
+                              padding: `${fieldPopoverHoverPaddingY}px ${fieldPopoverHoverPaddingX}px`,
+                              borderRadius: `${fieldPopoverHoverBorderRadius}px`,
+                              color: isDark ? '#FFFFFF' : '#000000',
+                            }}
+                          >
+                            <HugeiconsIcon icon={Delete01Icon} size={iconSz} color="currentColor" strokeWidth={iconStrokeVal} />
+                            <span>Remove</span>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+          </SquircleSegment>
+          <SquircleSegment
+            leftRadius={innerRadius}
+            rightRadius={innerRadius}
+            cornerSmoothing={cornerSm}
+            style={{ marginLeft: segmentSpacing, ...segmentStyle }}
+            className="flex shrink-0 h-12 items-center justify-center px-3 bg-[#F4F4F9] dark:bg-[#262626]"
+          >
+            <m.button
+              type="button"
+              onClick={() => cycleDirection(i)}
+              disabled={!isEditing}
+              className="flex h-full w-full cursor-pointer items-center justify-center border-0 bg-transparent outline-none disabled:cursor-default"
+              style={{ color: iconColor, x: swayX }}
+            >
+              <HugeiconsIcon
+                icon={getDirectionArrow(rule.field, rule.direction) === "ArrowDownDoubleIcon" ? ArrowDownDoubleIcon : ArrowUpDoubleIcon}
+                size={iconSz}
+                color={iconColor}
+                strokeWidth={iconStrokeVal}
+              />
+            </m.button>
+          </SquircleSegment>
+        </React.Fragment>
+      ))}
+      <Popover>
+        <SquircleSegment asChild
+          leftRadius={innerRadius}
+          rightRadius={innerRadius}
+          cornerSmoothing={cornerSm}
+          style={{ marginLeft: segmentSpacing, ...segmentStyle }}
+          className="flex shrink-0 h-12 items-center justify-center bg-[#F4F4F9] dark:bg-[#262626]"
+        >
+          <PopoverTrigger asChild>
+            <button
+              data-slot="sort-picker-add"
+              type="button"
+              disabled={!isEditing || allFieldsUsed}
+              aria-label="Add sort rule"
+              style={{
+                ...(segHeight != null ? { height: segHeight } : {}),
+                width: '32px',
+                backgroundColor: segBg,
+                cursor: isEditing ? 'pointer' : 'default',
+              }}
+              className="flex shrink-0 h-12 w-8 items-center justify-center border-0 bg-transparent text-[#868593] outline-none disabled:opacity-40"
+            >
+              <HugeiconsIcon icon={PlusSignIcon} size={iconSz} color="currentColor" strokeWidth={iconStrokeVal} />
+            </button>
+          </PopoverTrigger>
+        </SquircleSegment>
+        <PopoverContent
+          align="end"
+          sideOffset={6}
+          className="min-w-[160px] border-0 shadow-lg"
+          style={{
+            backgroundColor: segBg,
+            borderRadius: `${addPopoverCornerRadius}px`,
+            padding: `${addPopoverPaddingTop}px ${addPopoverPaddingRight}px ${addPopoverPaddingBottom}px ${addPopoverPaddingLeft}px`,
+          }}
+        >
+            <div className="flex flex-col gap-1">
+              <div
+                className="font-medium text-[#868593] tracking-wider"
+                style={{ padding: `${addPopoverTitlePaddingTop}px ${addPopoverTitlePaddingX}px ${addPopoverTitlePaddingBottom}px`, fontSize: addPopoverTitleFontSize, textTransform: addPopoverTitleTransform }}
+              >
+                Add sort
+              </div>
+              {(() => {
+                const usedFields = new Set(localRules.map(r => r.field))
+                return SORT_FIELDS.map((f) => {
+                  const isUsed = usedFields.has(f.value)
+                  return (
+                    <button
+                      key={f.value}
+                      type="button"
+                      onClick={() => {
+                        if (isUsed) return
+                        addField(f.value)
+                        setIsEditing(true)
+                      }}
+                      disabled={isUsed}
+                      className="flex w-full items-center gap-2 text-left text-sm font-medium outline-none transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+                      style={{
+                        padding: `${addPopoverHoverPaddingY}px ${addPopoverHoverPaddingX}px`,
+                        borderRadius: `${addPopoverHoverBorderRadius}px`,
+                        color: isDark ? '#FFFFFF' : '#000000',
+                        opacity: isUsed ? 0.4 : 1,
+                        cursor: isUsed ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      <span>{f.label}</span>
+                      {isUsed && (
+                        <span className="ml-auto text-[11px] text-[#868593]">Added</span>
+                      )}
+                    </button>
+                  )
+                })
+              })()}
+            </div>
+          </PopoverContent>
+        </Popover>
       <SquircleSegment
         asChild
         leftRadius={innerRadius}
@@ -480,47 +719,32 @@ function SortPicker({
         cornerSmoothing={cornerSm}
         style={{ marginLeft: segmentSpacing, ...segmentStyle }}
       >
-        <button
-          data-slot="sort-picker-toggle"
-          type="button"
-          onClick={toggleEdit}
-          disabled={disabled}
-          aria-label={isEditing ? 'Apply sort' : 'Change sort'}
-          style={{
-            ...(segHeight != null ? { height: segHeight } : {}),
-            ...(toggleW != null ? { width: toggleW } : {}),
-            backgroundColor: segBg,
-          }}
-          className="flex shrink-0 h-12 w-12 items-center justify-center bg-[#F4F4F9] transition-transform active:scale-90 disabled:active:scale-100 dark:bg-[#262626]"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            width={iconSz}
-            height={iconSz}
+          <button
+            data-slot="sort-picker-toggle"
+            type="button"
+            onClick={toggleEdit}
+            disabled={disabled}
+            aria-label={isEditing ? 'Apply sort' : 'Change sort'}
+            style={{
+              ...(segHeight != null ? { height: segHeight } : {}),
+              ...(toggleW != null ? { width: toggleW } : {}),
+              backgroundColor: segBg,
+            }}
+            className="flex shrink-0 h-12 w-12 items-center justify-center bg-[#F4F4F9] transition-transform active:scale-90 disabled:active:scale-100 dark:bg-[#262626]"
           >
-            <m.path
-              fill={iconColor}
-              stroke={iconColor}
-              strokeWidth={0}
-              strokeLinejoin="round"
-              strokeLinecap="round"
-              style={{
-                strokeWidth: iconStrokeWidth,
-                strokeOpacity: iconStrokeOpacity,
-              }}
-              d={iconPath}
-            />
-            <m.path
-              d="M14 6L18 10"
-              fill="none"
-              stroke={dashStroke}
-              strokeWidth={1.5}
-              strokeLinecap="round"
-              style={{ opacity: iconDashOpacity }}
-            />
-          </svg>
-        </button>
+            <div className="relative" style={{ width: iconSz, height: iconSz }}>
+              <m.div
+                style={{ opacity: useTransform(iconProgress, [0, 0.5], [1, 0]), position: 'absolute', inset: 0 }}
+              >
+                <HugeiconsIcon icon={Edit01Icon} size={iconSz} color={iconColor} strokeWidth={iconStrokeVal} />
+              </m.div>
+              <m.div
+                style={{ opacity: useTransform(iconProgress, [0.5, 1], [0, 1]), position: 'absolute', inset: 0 }}
+              >
+                <HugeiconsIcon icon={CheckIcon} size={iconSz} color={iconColor} strokeWidth={iconStrokeVal} />
+              </m.div>
+            </div>
+          </button>
       </SquircleSegment>
     </m.div>
     </LazyMotion>

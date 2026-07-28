@@ -103,9 +103,30 @@ Compact metadata-rich cards showing image thumbnail (when available), author, ha
 
 ## Classification
 
-The export pipeline runs fieldtheory's `ft index --force` followed by `ft classify --regex` to assign categories. Category and linked domain data appear in the sidebar as filterable facets.
+Field Theory powers category and linked-domain classification. On Windows, avoid plain `ft` in PowerShell because it conflicts with the built-in `Format-Table` alias. Use `npx ft`, `fieldtheory`, `ft.cmd`, or the local Node entrypoint.
 
-**Note:** `ft classify --domains` requires the `codex` or `claude` CLI, which are not currently available. Only regex-based category classification works.
+Recommended local workflow from this app directory:
+
+```powershell
+node node_modules\fieldtheory\bin\ft.mjs classify --engine codex
+node node_modules\fieldtheory\bin\ft.mjs classify-domains --engine codex
+node lib\export-bookmarks.js
+```
+
+The local Field Theory install is patched for Windows so the Codex engine launches through the npm-installed Codex JavaScript entrypoint instead of spawning the extensionless `codex` shim directly. Without that patch, Node can fail with `spawnSync codex EPERM` even when `codex --version` works in PowerShell.
+
+If dependencies are reinstalled and the error returns, patch `node_modules\fieldtheory\dist\engine.js` so the Codex engine uses:
+
+```text
+bin: process.execPath
+args prefix: C:\Users\hp\AppData\Roaming\npm\node_modules\@openai\codex\bin\codex.js
+```
+
+Then rerun the workflow above and verify `data\output\bookmarks-data.json` with:
+
+```powershell
+node -e "const d=require('./data/output/bookmarks-data.json'); const cats={}; d.bookmarks.forEach(b=>{const c=b.category||'unclassified'; cats[c]=(cats[c]||0)+1}); console.log('Categories:', cats)"
+```
 
 ## Project structure
 
