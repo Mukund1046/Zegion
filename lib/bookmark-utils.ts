@@ -56,13 +56,15 @@ export const formatCount = (value = 0) => {
 };
 
 export const getBookmarkDomain = (bookmark: Bookmark) => {
-  const linked = bookmark.domain ?? bookmark.linkedDomains?.[0];
+  const classified = bookmark.domain ?? bookmark.domains?.[0];
+  if (classified) return classified;
+  return "unknown";
+};
+
+export const getBookmarkSite = (bookmark: Bookmark) => {
+  const linked = bookmark.linkedDomains?.[0];
   if (linked) return linked;
-  try {
-    return new URL(bookmark.url).hostname.replace(/^www\./, "");
-  } catch {
-    return "unknown";
-  }
+  return "unknown";
 };
 
 export const getBookmarkMediaKind = (bookmark: Bookmark) => {
@@ -210,11 +212,14 @@ export const matchesActiveFacet = (
     return (bookmark.category || "unclassified") === activeFacetValue;
   }
   if (activeFacetType === "domain") {
-    const linked = bookmark.linkedDomains ?? (bookmark.domain ? [bookmark.domain] : []);
-    return linked.includes(activeFacetValue) || getBookmarkDomain(bookmark) === activeFacetValue;
+    const classified = bookmark.domains?.length ? bookmark.domains : bookmark.domain ? [bookmark.domain] : [];
+    return classified.includes(activeFacetValue) || getBookmarkDomain(bookmark) === activeFacetValue;
   }
   if (activeFacetType === "linkedDomain") {
     return (bookmark.linkedDomains || []).includes(activeFacetValue);
+  }
+  if (activeFacetType === "site") {
+    return (bookmark.linkedDomains || []).includes(activeFacetValue) || getBookmarkSite(bookmark) === activeFacetValue;
   }
   if (activeFacetType === "author") {
     return getBookmarkAuthorsLabel(bookmark) === activeFacetValue;

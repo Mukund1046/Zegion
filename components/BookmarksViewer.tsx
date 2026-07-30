@@ -709,6 +709,7 @@ function SearchCommand({
     if (query.startsWith("@")) return "author" as const;
     if (query.startsWith("#")) return "category" as const;
     if (query.startsWith("domain:") || query.startsWith("!domain:")) return "domain" as const;
+    if (query.startsWith("sites:") || query.startsWith("!sites:")) return "site" as const;
     return null;
   }, [query]);
 
@@ -717,6 +718,8 @@ function SearchCommand({
     if (query.startsWith("#")) return query.slice(1).toLowerCase();
     if (query.startsWith("!domain:")) return query.slice(8).toLowerCase();
     if (query.startsWith("domain:")) return query.slice(7).toLowerCase();
+    if (query.startsWith("!sites:")) return query.slice(7).toLowerCase();
+    if (query.startsWith("sites:")) return query.slice(6).toLowerCase();
     return "";
   }, [query]);
 
@@ -745,9 +748,22 @@ function SearchCommand({
   const domains = useMemo(() => {
     const map = new Map<string, number>();
     for (const b of state.allBookmarks) {
-      const list = b.linkedDomains?.length ? b.linkedDomains : b.domains ?? [];
+      const list = b.domains?.length ? b.domains : b.domain ? [b.domain] : [];
       for (const domain of list) {
+        if (domain === "x.com" || domain === "twitter.com") continue;
         map.set(domain, (map.get(domain) || 0) + 1);
+      }
+    }
+    return [...map.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, count]) => ({ name, count }));
+  }, [state.allBookmarks]);
+
+  const sites = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const b of state.allBookmarks) {
+      for (const site of b.linkedDomains ?? []) {
+        map.set(site, (map.get(site) || 0) + 1);
       }
     }
     return [...map.entries()]
@@ -780,6 +796,13 @@ function SearchCommand({
       .slice(0, cmdParams.maxResults as number);
   }, [domains, prefixQuery, cmdParams.maxResults]);
 
+  const filteredSites = useMemo(() => {
+    if (!prefixQuery) return sites.slice(0, cmdParams.maxResults as number);
+    return sites
+      .filter((s) => s.name.toLowerCase().includes(prefixQuery))
+      .slice(0, cmdParams.maxResults as number);
+  }, [sites, prefixQuery, cmdParams.maxResults]);
+
   const handleApplyFacet = useCallback(
     (type: FacetType, value: string) => {
       appliedRef.current = true;
@@ -797,11 +820,13 @@ function SearchCommand({
       handleApplyFacet("category", filteredCategories[0].name);
     } else if (prefix === "domain" && filteredDomains.length > 0) {
       handleApplyFacet("domain", filteredDomains[0].name);
+    } else if (prefix === "site" && filteredSites.length > 0) {
+      handleApplyFacet("site", filteredSites[0].name);
     } else {
       actions.setActiveSearch(query, true);
       onOpenChange(false);
     }
-  }, [prefix, filteredAuthors, filteredCategories, filteredDomains, query, actions, onOpenChange, handleApplyFacet]);
+  }, [prefix, filteredAuthors, filteredCategories, filteredDomains, filteredSites, query, actions, onOpenChange, handleApplyFacet]);
 
   const w = cmdParams.width as number;
   const mh = cmdParams.maxHeight as number;
@@ -859,7 +884,7 @@ function SearchCommand({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') handleEnter(); }}
-            placeholder="Search or use @author, #category, domain:…"
+            placeholder="Search or use @author, #category, domain:, sites:…"
             wrapperClassName="!bg-transparent !max-w-none !rounded-none !p-0 !border-0 !outline-none search-cmd-input-wrapper"
             className="outline-none ring-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
             style={{ fontSize: ifs }}
@@ -982,6 +1007,47 @@ function SearchCommand({
                     style={{ paddingLeft: ppX, paddingRight: ppX, paddingTop: ppY, paddingBottom: ppY, fontSize: bfs, background: state.darkMode ? cmdParams.prefixBadgeBgDark as string : cmdParams.prefixBadgeBg as string }}
                   >
                     {domain.count}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+          {prefix === "site" && (
+            <div className="flex flex-col" style={{ gap: ig }}>
+              {filteredSites.length === 0 && (
+                <div className="py-6 text-center text-sm text-muted-foreground">No sites found.</div>
+              )}
+              {filteredSites.map((site) => (
+                <button
+                  key={site.name}
+                  type="button"
+                  className="flex w-full items-center gap-3 rounded-lg text-left transition-colors"
+                  style={{
+                    paddingLeft: ipX2 + hpX,
+                    paddingRight: ipX2 + hpX,
+                    paddingTop: ipY2 + hpY,
+                    paddingBottom: ipY2 + hpY,
+                    backgroundColor: "transparent",
+                  }}
+                  onClick={() => handleApplyFacet("site", site.name)}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = cmdParams.hoverBg as string; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = "transparent"; }}
+                >
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-xs text-muted-foreground">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+                      <line x1="8" y1="21" x2="16" y2="21" />
+                      <line x1="12" y1="17" x2="12" y2="21" />
+                    </svg>
+                  </div>
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate text-sm font-medium text-foreground">{site.name}</span>
+                  </div>
+                  <span
+                    className="shrink-0 rounded-md text-xs font-semibold capitalize tracking-wide"
+                    style={{ paddingLeft: ppX, paddingRight: ppX, paddingTop: ppY, paddingBottom: ppY, fontSize: bfs, background: state.darkMode ? cmdParams.prefixBadgeBgDark as string : cmdParams.prefixBadgeBg as string }}
+                  >
+                    {site.count}
                   </span>
                 </button>
               ))}

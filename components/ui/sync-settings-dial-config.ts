@@ -4,12 +4,12 @@ export const syncSettingsDialConfig = {
   Section: {
     gap: 16,
     innerGap: 12,
-    panelPaddingX: 24,
+    panelPaddingX: 16,
     panelPaddingY: 16,
     sectionPaddingX: 0,
   },
   ChoiceCard: {
-    paddingX: 12,
+    paddingX: 14,
     paddingY: 12,
     gap: 12,
     borderRadius: 10,
@@ -61,9 +61,9 @@ export const syncSettingsDialConfig = {
     checkSize: 12,
   },
   Title: {
-    paddingTop: 24,
+    paddingTop: 38,
     paddingBottom: 4,
-    paddingLeft: 24,
+    paddingLeft: 30,
     paddingRight: 24,
     gap: 8,
     titleSize: 18,

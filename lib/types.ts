@@ -51,6 +51,7 @@ export type FacetType =
   | "category"
   | "domain"
   | "linkedDomain"
+  | "site"
   | "author"
   | "media";
 
