@@ -316,10 +316,6 @@ select:focus-visible,
   transform: translateX(-50%);
   display: flex;
   align-items: center;
-  border-radius: 12px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
   z-index: 10;
   pointer-events: auto;
 }
@@ -511,16 +507,9 @@ body.dark-mode .action-pill {
   inset: 0;
   z-index: 100;
   background: rgba(18, 14, 10, 0.22);
+  backdrop-filter: blur(4px);
   opacity: 0;
   transition: opacity 0.25s ease;
-}
-.sidebar-backdrop::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  backdrop-filter: blur(4px);
-  pointer-events: none;
 }
 
 .sidebar-backdrop.open {
@@ -1108,18 +1097,11 @@ body.dark-mode .grid-item-text {
   inset: 0;
   z-index: 40000;
   background: rgba(24, 18, 15, 0.28);
+  backdrop-filter: blur(10px);
   pointer-events: none;
   opacity: 0;
   visibility: hidden;
   transition: opacity 0.28s cubic-bezier(0.25, 1, 0.5, 1);
-}
-.lightbox-overlay::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  backdrop-filter: blur(10px);
-  pointer-events: none;
 }
 
 .lightbox-overlay.active {
@@ -1491,6 +1473,18 @@ body.dark-mode .grid-item-text {
 .skip-link:focus {
   inset-inline-start: 16px;
   top: 16px;
+}
+
+[data-slot="context-menu-popup"] {
+  --ctx-hover-bg: var(--ctx-hover-bg-fallback, var(--accent));
+  --ctx-hover-text: var(--ctx-hover-text-fallback, var(--foreground));
+}
+[data-slot="context-menu-popup"]::before {
+  display: none !important;
+}
+[data-slot="context-menu-popup"] [data-slot="context-menu-item"]:where([data-highlighted]) {
+  background-color: var(--ctx-hover-bg);
+  color: var(--ctx-hover-text);
 }
 
 @media (prefers-reduced-motion: reduce) {

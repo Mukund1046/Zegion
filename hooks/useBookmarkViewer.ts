@@ -169,6 +169,8 @@ export function useBookmarkViewer() {
   const [scrubberPreviewTop, setScrubberPreviewTop] = useState(0);
   const [scrubberPreviewVisible, setScrubberPreviewVisible] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [contextMenuBookmark, setContextMenuBookmark] = useState<Bookmark | null>(null);
+  const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y: 0 });
   const [lightboxTitle, setLightboxTitle] = useState("");
   const [lightboxLinkHref, setLightboxLinkHref] = useState("#");
   const [lightboxLinkText, setLightboxLinkText] = useState("");
@@ -1565,6 +1567,18 @@ export function useBookmarkViewer() {
       if (bookmark) openLightbox(target, bookmark);
     };
 
+    const onContextMenu = (event: MouseEvent) => {
+      if (engine.lightboxOpen) return;
+      const target = (event.target as HTMLElement).closest(".grid-item") as HTMLDivElement;
+      if (!target) { setContextMenuBookmark(null); return; }
+      const bookmark = engine.elToBookmark.get(target);
+      if (bookmark) {
+        event.preventDefault();
+        setContextMenuBookmark(bookmark);
+        setContextMenuPos({ x: event.clientX, y: event.clientY });
+      }
+    };
+
     const onTouchStart = (event: TouchEvent) => {
       if (isVerticalFeedView(activeView)) return;
       if (event.touches.length === 1) {
@@ -1705,6 +1719,7 @@ export function useBookmarkViewer() {
     viewport.addEventListener("mouseup", onMouseUp);
     viewport.addEventListener("mouseleave", onMouseUp);
     viewport.addEventListener("click", onViewportClick);
+    viewport.addEventListener("contextmenu", onContextMenu);
     viewport.addEventListener("wheel", onWheel, { passive: false });
     viewport.addEventListener("scroll", syncFeedScrollState, { passive: true });
     viewport.addEventListener("touchstart", onTouchStart, { passive: true });
@@ -1722,6 +1737,7 @@ export function useBookmarkViewer() {
       viewport.removeEventListener("mouseup", onMouseUp);
       viewport.removeEventListener("mouseleave", onMouseUp);
       viewport.removeEventListener("click", onViewportClick);
+      viewport.removeEventListener("contextmenu", onContextMenu);
       viewport.removeEventListener("wheel", onWheel);
       viewport.removeEventListener("scroll", syncFeedScrollState);
       viewport.removeEventListener("touchstart", onTouchStart);
@@ -1907,6 +1923,8 @@ export function useBookmarkViewer() {
       lightboxLinkHref,
       lightboxLinkText,
       lightboxMeta,
+      contextMenuBookmark,
+      contextMenuPos,
       containerHeight,
       gridWidth,
       gridHeight,
@@ -1968,6 +1986,7 @@ export function useBookmarkViewer() {
       applyView,
       applyFacet,
       closeLightbox,
+      clearContextMenu: () => setContextMenuBookmark(null),
       runServerAction,
       jumpToScrubberMarker,
       jumpToDayScrubberMarker,

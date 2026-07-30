@@ -30,9 +30,19 @@ import {
   Cancel01Icon,
   CommandIcon,
   EllipsisIcon,
+  Link01Icon,
+  Copy01Icon,
+  UserIcon,
+  TextIcon,
 } from '@hugeicons/core-free-icons'
 import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import type { Bookmark } from "@/lib/types";
+import {
+  ContextMenu,
+  ContextMenuPopup,
+  ContextMenuItem,
+  ContextMenuSeparator,
+} from "@/components/ui/context-menu";
 
 function ToolbarRegion({
   state,
@@ -497,8 +507,47 @@ function FeedRegion({
     btnPadding: [4, 0, 16, 1],
   });
 
+  const [barHover, setBarHover] = useState(false);
+  const [scrollY, setScrollY] = useState(0);
+  const [scrollMax, setScrollMax] = useState(0);
+  const barTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  useEffect(() => {
+    const el = refs.viewportRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      setScrollY(el.scrollTop);
+      setScrollMax(el.scrollHeight - el.clientHeight);
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [refs.viewportRef]);
+
+  const showScrollTop = scrollY > 800 && state.feedMode;
+
+  const showBar = barHover || state.feedMode === false;
+
   return (
-    <div ref={refs.feedShellRef} className="feed-shell">
+    <div
+      ref={refs.feedShellRef}
+      className="feed-shell"
+      onMouseEnter={() => {
+        clearTimeout(barTimerRef.current);
+        setBarHover(true);
+      }}
+      onMouseLeave={() => {
+        barTimerRef.current = setTimeout(() => setBarHover(false), 300);
+      }}
+    >
+      <div
+        className="absolute bottom-0 left-0 right-0 z-10"
+        style={{ height: 80 }}
+        onMouseEnter={() => {
+          clearTimeout(barTimerRef.current);
+          setBarHover(true);
+        }}
+      />
       <main
         ref={refs.viewportRef}
         id="viewport"
@@ -524,13 +573,56 @@ function FeedRegion({
           />
         </div>
       </main>
-      <div
-        className="feed-bottom-bar"
-        style={{
-          padding: `${bar.paddingY as number}px ${bar.paddingX as number}px`,
-          gap: `${bar.gap as number}px`,
-        }}
-      >
+      <AnimatePresence>
+        {showScrollTop && (
+          <motion.button
+            key="scroll-top"
+            type="button"
+            aria-label="Scroll to top"
+            initial={{ scale: 0, opacity: 0, y: 20 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0, opacity: 0, y: 20 }}
+            transition={{ type: "spring", stiffness: 520, damping: 38 }}
+            onClick={() => refs.viewportRef.current?.scrollTo({ top: 0, behavior: "smooth" })}
+            style={{
+              position: "absolute",
+              bottom: mobile ? 8 : 12,
+              insetInlineEnd: mobile ? 8 : 12,
+              zIndex: 20,
+              width: 40,
+              height: 40,
+              borderRadius: "50%",
+              border: "1px solid var(--border)",
+              background: "var(--popover)",
+              color: "var(--foreground)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 15l-6-6-6 6" />
+            </svg>
+          </motion.button>
+        )}
+      </AnimatePresence>
+      <div className="feed-bottom-bar">
+        <motion.div
+          animate={{ y: showBar ? 0 : 80, opacity: showBar ? 1 : 0 }}
+          transition={{ type: "spring", stiffness: 520, damping: 38 }}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: `${bar.gap as number}px`,
+            padding: `${bar.paddingY as number}px ${bar.paddingX as number}px`,
+            borderRadius: 12,
+            background: "var(--card)",
+            border: "1px solid var(--border)",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.1)",
+          }}
+        >
         <div
           className="view-toggle"
           role="radiogroup"
@@ -584,6 +676,7 @@ function FeedRegion({
           onChange={(sort) => actions.setActiveSort(sort)}
           mobile={mobile}
         />
+      </motion.div>
       </div>
     </div>
   );
@@ -1227,6 +1320,25 @@ export default function BookmarksViewer() {
   const { refs, state, actions, helpers } = useBookmarkViewer();
   const [searchOpen, setSearchOpen] = useState(false);
   const isMobile = useMediaQuery("(max-width: 720px)");
+  const contextAnchorRef = useRef<HTMLDivElement>(null);
+
+  const ctx = useDialKit("Context Menu", {
+    popupRadius: [16, 0, 24, 1],
+    itemRadius: [12, 0, 20, 1],
+    popupPaddingX: [6, 0, 24, 1],
+    popupPaddingY: [6, 0, 24, 1],
+    itemPaddingX: [10, 0, 24, 1],
+    itemPaddingY: [6, 0, 20, 1],
+    hoverBg: { type: "color", default: "#ececec" },
+    hoverBgDark: { type: "color", default: "var(--muted)" },
+  });
+
+  useEffect(() => {
+    if (state.contextMenuBookmark && contextAnchorRef.current) {
+      contextAnchorRef.current.style.left = `${state.contextMenuPos.x}px`;
+      contextAnchorRef.current.style.top = `${state.contextMenuPos.y}px`;
+    }
+  }, [state.contextMenuBookmark, state.contextMenuPos]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -1240,25 +1352,89 @@ export default function BookmarksViewer() {
   }, []);
 
   return (
-    <div className="app-shell">
-      <section className="content-shell">
-        <ToolbarRegion
+      <ContextMenu
+        open={!!state.contextMenuBookmark}
+        onOpenChange={(open: boolean) => { if (!open) actions.clearContextMenu(); }}
+      >
+      <div className="app-shell">
+        <section className="content-shell">
+          <ToolbarRegion
+            state={state}
+            actions={actions}
+            helpers={helpers}
+            onSearchOpenChange={setSearchOpen}
+          />
+          <div className="workspace-shell">
+            <FeedRegion refs={refs} state={state} actions={actions} helpers={helpers} mobile={isMobile} />
+          </div>
+        </section>
+        <SearchCommand
+          open={searchOpen}
+          onOpenChange={setSearchOpen}
           state={state}
           actions={actions}
-          helpers={helpers}
-          onSearchOpenChange={setSearchOpen}
         />
-        <div className="workspace-shell">
-          <FeedRegion refs={refs} state={state} actions={actions} helpers={helpers} mobile={isMobile} />
-        </div>
-      </section>
-      <SearchCommand
-        open={searchOpen}
-        onOpenChange={setSearchOpen}
-        state={state}
-        actions={actions}
-      />
-      <LightboxOverlay refs={refs} state={state} actions={actions} />
-    </div>
+        <LightboxOverlay refs={refs} state={state} actions={actions} />
+      </div>
+      <div ref={contextAnchorRef} className="fixed pointer-events-none" style={{ width: 1, height: 1 }} />
+      {state.contextMenuBookmark && (
+        <ContextMenuPopup
+          align="start"
+          side="bottom"
+          sideOffset={0}
+          anchor={contextAnchorRef.current ?? undefined}
+          style={{
+            borderRadius: ctx.popupRadius as number,
+            padding: `${ctx.popupPaddingY as number}px ${ctx.popupPaddingX as number}px`,
+            border: "none",
+            boxShadow: "none",
+            ["--ctx-hover-bg" as string]: state.darkMode ? ctx.hoverBgDark as string : ctx.hoverBg as string,
+            ["--ctx-hover-text" as string]: undefined,
+          }}
+        >
+          <ContextMenuItem
+            style={{
+              borderRadius: ctx.itemRadius as number,
+              padding: `${ctx.itemPaddingY as number}px ${ctx.itemPaddingX as number}px`,
+            }}
+            onClick={() => { window.open(state.contextMenuBookmark!.url, "_blank"); actions.clearContextMenu(); }}
+          >
+            <HugeiconsIcon icon={Link01Icon} size={14} />
+            Open in new tab
+          </ContextMenuItem>
+          <ContextMenuItem
+            style={{
+              borderRadius: ctx.itemRadius as number,
+              padding: `${ctx.itemPaddingY as number}px ${ctx.itemPaddingX as number}px`,
+            }}
+            onClick={() => { navigator.clipboard.writeText(state.contextMenuBookmark!.url); actions.clearContextMenu(); }}
+          >
+            <HugeiconsIcon icon={Copy01Icon} size={14} />
+            Copy link
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem
+            style={{
+              borderRadius: ctx.itemRadius as number,
+              padding: `${ctx.itemPaddingY as number}px ${ctx.itemPaddingX as number}px`,
+            }}
+            onClick={() => { navigator.clipboard.writeText(state.contextMenuBookmark!.text); actions.clearContextMenu(); }}
+          >
+            <HugeiconsIcon icon={TextIcon} size={14} />
+            Copy text
+          </ContextMenuItem>
+          <ContextMenuItem
+            style={{
+              borderRadius: ctx.itemRadius as number,
+              padding: `${ctx.itemPaddingY as number}px ${ctx.itemPaddingX as number}px`,
+            }}
+            onClick={() => { navigator.clipboard.writeText(`@${state.contextMenuBookmark!.authorHandle}`); actions.clearContextMenu(); }}
+          >
+            <HugeiconsIcon icon={UserIcon} size={14} />
+            Copy @handle
+          </ContextMenuItem>
+        </ContextMenuPopup>
+      )}
+    </ContextMenu>
   );
 }
