@@ -171,6 +171,8 @@ export function useBookmarkViewer() {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [contextMenuBookmark, setContextMenuBookmark] = useState<Bookmark | null>(null);
   const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y: 0 });
+  type CopiedItem = "link" | "text" | "handle" | null;
+  const [copiedItem, setCopiedItem] = useState<CopiedItem>(null);
   const [lightboxTitle, setLightboxTitle] = useState("");
   const [lightboxLinkHref, setLightboxLinkHref] = useState("#");
   const [lightboxLinkText, setLightboxLinkText] = useState("");
@@ -1925,6 +1927,7 @@ export function useBookmarkViewer() {
       lightboxMeta,
       contextMenuBookmark,
       contextMenuPos,
+      copiedItem,
       containerHeight,
       gridWidth,
       gridHeight,
@@ -1986,7 +1989,11 @@ export function useBookmarkViewer() {
       applyView,
       applyFacet,
       closeLightbox,
-      clearContextMenu: () => setContextMenuBookmark(null),
+      clearContextMenu: () => {
+        setContextMenuBookmark(null);
+        setCopiedItem(null);
+      },
+      setCopiedItem: (item: CopiedItem) => setCopiedItem(item),
       runServerAction,
       jumpToScrubberMarker,
       jumpToDayScrubberMarker,

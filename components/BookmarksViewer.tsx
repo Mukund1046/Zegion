@@ -32,6 +32,7 @@ import {
   EllipsisIcon,
   Link01Icon,
   Copy01Icon,
+  CheckmarkCircle01Icon,
   UserIcon,
   TextIcon,
 } from '@hugeicons/core-free-icons'
@@ -1321,6 +1322,35 @@ export default function BookmarksViewer() {
   const [searchOpen, setSearchOpen] = useState(false);
   const isMobile = useMediaQuery("(max-width: 720px)");
   const contextAnchorRef = useRef<HTMLDivElement>(null);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copyingRef = useRef(false);
+
+  const handleCopy = useCallback((item: "link" | "text" | "handle") => {
+    const text = item === "link" ? state.contextMenuBookmark!.url
+      : item === "text" ? state.contextMenuBookmark!.text
+      : `@${state.contextMenuBookmark!.authorHandle}`;
+    navigator.clipboard.writeText(text);
+    actions.setCopiedItem(item);
+    copyingRef.current = true;
+    if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+    copyTimeoutRef.current = setTimeout(() => {
+      actions.setCopiedItem(null);
+      actions.clearContextMenu();
+      copyTimeoutRef.current = null;
+      copyingRef.current = false;
+    }, 1500);
+  }, [state.contextMenuBookmark, actions]);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+    };
+  }, []);
+
+  const handleOpenChange = useCallback((open: boolean) => {
+    if (!open && !copyingRef.current) actions.clearContextMenu();
+    if (open) copyingRef.current = false;
+  }, [actions]);
 
   const ctx = useDialKit("Context Menu", {
     popupRadius: [16, 0, 24, 1],
@@ -1354,7 +1384,7 @@ export default function BookmarksViewer() {
   return (
       <ContextMenu
         open={!!state.contextMenuBookmark}
-        onOpenChange={(open: boolean) => { if (!open) actions.clearContextMenu(); }}
+        onOpenChange={handleOpenChange}
       >
       <div className="app-shell">
         <section className="content-shell">
@@ -1407,10 +1437,56 @@ export default function BookmarksViewer() {
               borderRadius: ctx.itemRadius as number,
               padding: `${ctx.itemPaddingY as number}px ${ctx.itemPaddingX as number}px`,
             }}
-            onClick={() => { navigator.clipboard.writeText(state.contextMenuBookmark!.url); actions.clearContextMenu(); }}
+            onClick={() => handleCopy("link")}
           >
-            <HugeiconsIcon icon={Copy01Icon} size={14} />
-            Copy link
+            <div className="relative" style={{ width: 14, height: 14 }}>
+              <motion.div
+                initial={{ scale: 1, opacity: 1 }}
+                animate={{
+                  scale: state.copiedItem === "link" ? 0.5 : 1,
+                  opacity: state.copiedItem === "link" ? 0 : 1,
+                }}
+                transition={{ type: "spring", stiffness: 520, damping: 38 }}
+                style={{ position: "absolute", inset: 0 }}
+              >
+                <HugeiconsIcon icon={Copy01Icon} size={14} />
+              </motion.div>
+              <motion.div
+                initial={{ scale: 0.5, opacity: 0 }}
+                animate={{
+                  scale: state.copiedItem === "link" ? 1 : 0.5,
+                  opacity: state.copiedItem === "link" ? 1 : 0,
+                }}
+                transition={{ type: "spring", stiffness: 520, damping: 38 }}
+                style={{ position: "absolute", inset: 0 }}
+              >
+                <HugeiconsIcon icon={CheckmarkCircle01Icon} size={14} />
+              </motion.div>
+            </div>
+            <div className="relative overflow-hidden whitespace-nowrap" style={{ width: 130, height: "1.5em" }}>
+              <motion.span
+                initial={{ y: 0, opacity: 1 }}
+                animate={{
+                  y: state.copiedItem === "link" ? -24 : 0,
+                  opacity: state.copiedItem === "link" ? 0 : 1,
+                }}
+                transition={{ type: "spring", stiffness: 520, damping: 38 }}
+                style={{ position: "absolute", inset: 0 }}
+              >
+                Copy link
+              </motion.span>
+              <motion.span
+                initial={{ y: 24, opacity: 0 }}
+                animate={{
+                  y: state.copiedItem === "link" ? 0 : 24,
+                  opacity: state.copiedItem === "link" ? 1 : 0,
+                }}
+                transition={{ type: "spring", stiffness: 520, damping: 38 }}
+                style={{ position: "absolute", inset: 0, display: "inline-block" }}
+              >
+                Copied link
+              </motion.span>
+            </div>
           </ContextMenuItem>
           <ContextMenuSeparator />
           <ContextMenuItem
@@ -1418,20 +1494,112 @@ export default function BookmarksViewer() {
               borderRadius: ctx.itemRadius as number,
               padding: `${ctx.itemPaddingY as number}px ${ctx.itemPaddingX as number}px`,
             }}
-            onClick={() => { navigator.clipboard.writeText(state.contextMenuBookmark!.text); actions.clearContextMenu(); }}
+            onClick={() => handleCopy("text")}
           >
-            <HugeiconsIcon icon={TextIcon} size={14} />
-            Copy text
+            <div className="relative" style={{ width: 14, height: 14 }}>
+              <motion.div
+                initial={{ scale: 1, opacity: 1 }}
+                animate={{
+                  scale: state.copiedItem === "text" ? 0.5 : 1,
+                  opacity: state.copiedItem === "text" ? 0 : 1,
+                }}
+                transition={{ type: "spring", stiffness: 520, damping: 38 }}
+                style={{ position: "absolute", inset: 0 }}
+              >
+                <HugeiconsIcon icon={TextIcon} size={14} />
+              </motion.div>
+              <motion.div
+                initial={{ scale: 0.5, opacity: 0 }}
+                animate={{
+                  scale: state.copiedItem === "text" ? 1 : 0.5,
+                  opacity: state.copiedItem === "text" ? 1 : 0,
+                }}
+                transition={{ type: "spring", stiffness: 520, damping: 38 }}
+                style={{ position: "absolute", inset: 0 }}
+              >
+                <HugeiconsIcon icon={CheckmarkCircle01Icon} size={14} />
+              </motion.div>
+            </div>
+            <div className="relative overflow-hidden whitespace-nowrap" style={{ width: 130, height: "1.5em" }}>
+              <motion.span
+                initial={{ y: 0, opacity: 1 }}
+                animate={{
+                  y: state.copiedItem === "text" ? -24 : 0,
+                  opacity: state.copiedItem === "text" ? 0 : 1,
+                }}
+                transition={{ type: "spring", stiffness: 520, damping: 38 }}
+                style={{ position: "absolute", inset: 0 }}
+              >
+                Copy text
+              </motion.span>
+              <motion.span
+                initial={{ y: 24, opacity: 0 }}
+                animate={{
+                  y: state.copiedItem === "text" ? 0 : 24,
+                  opacity: state.copiedItem === "text" ? 1 : 0,
+                }}
+                transition={{ type: "spring", stiffness: 520, damping: 38 }}
+                style={{ position: "absolute", inset: 0, display: "inline-block" }}
+              >
+                Copied text
+              </motion.span>
+            </div>
           </ContextMenuItem>
           <ContextMenuItem
             style={{
               borderRadius: ctx.itemRadius as number,
               padding: `${ctx.itemPaddingY as number}px ${ctx.itemPaddingX as number}px`,
             }}
-            onClick={() => { navigator.clipboard.writeText(`@${state.contextMenuBookmark!.authorHandle}`); actions.clearContextMenu(); }}
+            onClick={() => handleCopy("handle")}
           >
-            <HugeiconsIcon icon={UserIcon} size={14} />
-            Copy @handle
+            <div className="relative" style={{ width: 14, height: 14 }}>
+              <motion.div
+                initial={{ scale: 1, opacity: 1 }}
+                animate={{
+                  scale: state.copiedItem === "handle" ? 0.5 : 1,
+                  opacity: state.copiedItem === "handle" ? 0 : 1,
+                }}
+                transition={{ type: "spring", stiffness: 520, damping: 38 }}
+                style={{ position: "absolute", inset: 0 }}
+              >
+                <HugeiconsIcon icon={UserIcon} size={14} />
+              </motion.div>
+              <motion.div
+                initial={{ scale: 0.5, opacity: 0 }}
+                animate={{
+                  scale: state.copiedItem === "handle" ? 1 : 0.5,
+                  opacity: state.copiedItem === "handle" ? 1 : 0,
+                }}
+                transition={{ type: "spring", stiffness: 520, damping: 38 }}
+                style={{ position: "absolute", inset: 0 }}
+              >
+                <HugeiconsIcon icon={CheckmarkCircle01Icon} size={14} />
+              </motion.div>
+            </div>
+            <div className="relative overflow-hidden whitespace-nowrap" style={{ width: 130, height: "1.5em" }}>
+              <motion.span
+                initial={{ y: 0, opacity: 1 }}
+                animate={{
+                  y: state.copiedItem === "handle" ? -24 : 0,
+                  opacity: state.copiedItem === "handle" ? 0 : 1,
+                }}
+                transition={{ type: "spring", stiffness: 520, damping: 38 }}
+                style={{ position: "absolute", inset: 0 }}
+              >
+                Copy @handle
+              </motion.span>
+              <motion.span
+                initial={{ y: 24, opacity: 0 }}
+                animate={{
+                  y: state.copiedItem === "handle" ? 0 : 24,
+                  opacity: state.copiedItem === "handle" ? 1 : 0,
+                }}
+                transition={{ type: "spring", stiffness: 520, damping: 38 }}
+                style={{ position: "absolute", inset: 0, display: "inline-block" }}
+              >
+                Copied @handle
+              </motion.span>
+            </div>
           </ContextMenuItem>
         </ContextMenuPopup>
       )}
