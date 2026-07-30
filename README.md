@@ -1,6 +1,6 @@
 <div align="center">
   <picture>
-    <img src="assets/Logo/ZegionforReadme.png" alt="Zegion logo" width="400">
+    <img src="assets/Logo/ZegionforReadme.png" alt="Zegion logo" width="300">
   </picture>
 </div>
 
