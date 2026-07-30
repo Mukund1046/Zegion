@@ -7,7 +7,7 @@ import {
   useMotionValue,
   useReducedMotion,
   useSpring,
-} from "framer-motion";
+} from "motion/react";
 import React, {
   type ComponentPropsWithoutRef,
   useEffect,
@@ -55,9 +55,53 @@ const Input = ({ className, wrapperClassName, ...props }: InputFieldProps) => {
   );
 };
 
-const PASSWORD_CHAR = navigator.userAgent.match(/firefox|fxios/i)
+const PASSWORD_CHAR = typeof window !== "undefined" && navigator.userAgent.match(/firefox|fxios/i)
   ? "\u25CF"
   : "\u2022";
+
+const computeScrollLeft = (
+  target: HTMLInputElement,
+  absoluteWidth: number,
+): { scrollLeft: number; changed: boolean } => {
+  const styles = window.getComputedStyle(target);
+  const paddingLeft = parseFloat(styles.paddingLeft) || 0;
+  const paddingRight = parseFloat(styles.paddingRight) || 0;
+  const maxScroll = Math.max(0, target.scrollWidth - target.clientWidth);
+  const visibleRight = target.scrollLeft + target.clientWidth - paddingRight;
+  const visibleLeft = target.scrollLeft + paddingLeft;
+
+  if (absoluteWidth > visibleRight) {
+    return {
+      scrollLeft: Math.min(
+        absoluteWidth - target.clientWidth + paddingRight,
+        maxScroll,
+      ),
+      changed: true,
+    };
+  }
+
+  if (absoluteWidth < visibleLeft) {
+    return {
+      scrollLeft: Math.max(0, absoluteWidth - paddingLeft),
+      changed: true,
+    };
+  }
+
+  return { scrollLeft: target.scrollLeft, changed: false };
+};
+
+const getCaretIndex = (target: HTMLInputElement) => {
+  const selectionStart = target.selectionStart ?? 0;
+  const selectionEnd = target.selectionEnd ?? 0;
+
+  if (selectionStart === selectionEnd) {
+    return selectionStart;
+  }
+
+  return target.selectionDirection === "backward"
+    ? selectionStart
+    : selectionEnd;
+};
 
 const SmoothInput = ({
   className,
@@ -168,50 +212,6 @@ const SmoothInput = ({
     return text.length > 0
       ? measureSpan.offsetWidth + paddingLeft
       : paddingLeft - 1;
-  };
-
-  const computeScrollLeft = (
-    target: HTMLInputElement,
-    absoluteWidth: number,
-  ): { scrollLeft: number; changed: boolean } => {
-    const styles = window.getComputedStyle(target);
-    const paddingLeft = parseFloat(styles.paddingLeft) || 0;
-    const paddingRight = parseFloat(styles.paddingRight) || 0;
-    const maxScroll = Math.max(0, target.scrollWidth - target.clientWidth);
-    const visibleRight = target.scrollLeft + target.clientWidth - paddingRight;
-    const visibleLeft = target.scrollLeft + paddingLeft;
-
-    if (absoluteWidth > visibleRight) {
-      return {
-        scrollLeft: Math.min(
-          absoluteWidth - target.clientWidth + paddingRight,
-          maxScroll,
-        ),
-        changed: true,
-      };
-    }
-
-    if (absoluteWidth < visibleLeft) {
-      return {
-        scrollLeft: Math.max(0, absoluteWidth - paddingLeft),
-        changed: true,
-      };
-    }
-
-    return { scrollLeft: target.scrollLeft, changed: false };
-  };
-
-  const getCaretIndex = (target: HTMLInputElement) => {
-    const selectionStart = target.selectionStart ?? 0;
-    const selectionEnd = target.selectionEnd ?? 0;
-
-    if (selectionStart === selectionEnd) {
-      return selectionStart;
-    }
-
-    return target.selectionDirection === "backward"
-      ? selectionStart
-      : selectionEnd;
   };
 
   const updateCaretFromInput = (target: HTMLInputElement) => {
@@ -352,7 +352,7 @@ const SmoothInput = ({
         />
         <motion.div
           className="bg-primary pointer-events-none col-start-1 col-end-2 row-start-1 row-end-2 h-[0.9em] w-px self-center"
-          style={{ x: springCaretX, opacity: caretOpacity, willChange: "transform" }}
+          style={{ x: springCaretX, opacity: caretOpacity }}
         />
       </div>
     </div>

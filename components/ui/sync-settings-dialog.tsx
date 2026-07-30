@@ -289,7 +289,6 @@ export default function SyncSettingsDialog({
                   textAlign: "left",
                   width: "100%",
                   transition: "border-color 0.15s ease, background 0.15s ease",
-                  outline: "none",
                 }}
               >
                 <div
@@ -303,7 +302,6 @@ export default function SyncSettingsDialog({
                     background: isAuto ? (sc.iconActiveBg as string) : (sc.iconBg as string),
                     color: isAuto ? (sc.iconActiveColor as string) : (sc.iconColor as string),
                     flexShrink: 0,
-                    transition: "background 0.15s ease, color 0.15s ease",
                   }}
                 >
                   <HugeiconsIcon icon={BrowserIcon} size={sc.iconInner} />
@@ -392,7 +390,7 @@ export default function SyncSettingsDialog({
                       </button>
                       {dropdownOpen && (
                         <>
-                          <div className="fixed inset-0 z-40" onClick={() => setDropdownOpen(false)} />
+                          <button type="button" aria-label="Close dropdown" className="fixed inset-0 z-40 cursor-default" onClick={() => setDropdownOpen(false)} onKeyDown={(e) => { if (e.key === 'Escape') setDropdownOpen(false) }} />
                           <div
                             style={{
                               position: "absolute",
@@ -480,7 +478,6 @@ export default function SyncSettingsDialog({
                   textAlign: "left",
                   width: "100%",
                   transition: "border-color 0.15s ease, background 0.15s ease",
-                  outline: "none",
                 }}
               >
                 <div

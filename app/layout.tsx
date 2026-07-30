@@ -29,6 +29,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${hostGrotesk.className} ${facultyGlyphic.variable}`}>
+        <a href="#viewport" className="skip-link">Skip to content</a>
         <DialRoot defaultOpen />
         {children}
       </body>

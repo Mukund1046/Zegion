@@ -937,7 +937,7 @@ export function useBookmarkViewer() {
       if (engine.lightboxOpen || engine.lightboxAnimating) return;
 
       if (!bookmark.images || bookmark.images.length === 0) {
-        window.open(bookmark.url, "_blank");
+        window.open(bookmark.url, "_blank", "noopener");
         return;
       }
 
@@ -1016,7 +1016,7 @@ export function useBookmarkViewer() {
           "position:absolute;inset:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;z-index:2;pointer-events:auto;";
         playButton.addEventListener("click", (event) => {
           event.stopPropagation();
-          window.open(bookmark.url, "_blank");
+          window.open(bookmark.url, "_blank", "noopener");
         }, { once: true });
         clone.appendChild(playButton);
       }
@@ -1194,6 +1194,14 @@ export function useBookmarkViewer() {
         engine.needsPostLightboxRelayout = false;
         rebuildFeedForCurrentViewport();
       }
+    }).catch(() => {
+      clone.remove();
+      document.body.style.overflow = "";
+      engine.lightboxClone = null;
+      element.style.visibility = "";
+      engine.lightboxOpen = false;
+      engine.lightboxItem = null;
+      engine.lightboxAnimating = false;
     });
   }, [rebuildFeedForCurrentViewport]);
 
@@ -1932,6 +1940,22 @@ export function useBookmarkViewer() {
           activeFacetType,
           activeFacetValue,
           activeSort,
+          activeView
+        );
+      },
+      resetFilters: () => {
+        setActiveSearch("");
+        setActiveFacetType("all");
+        setActiveFacetValue("All bookmarks");
+        setActiveFolder("All");
+        setActiveSort(DEFAULT_SORT);
+        refreshDisplay(
+          allBookmarks,
+          "All",
+          "",
+          "all",
+          "All bookmarks",
+          DEFAULT_SORT,
           activeView
         );
       },

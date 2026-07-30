@@ -110,7 +110,7 @@ function ToolbarRegion({
       <div className="toolbar">
         <div className="toolbar-row">
           <div className="toolbar-left">
-            <div className="brand">
+            <div className="brand" onClick={() => actions.resetFilters()} onKeyDown={(e) => { if (e.key === 'Enter') actions.resetFilters(); }} tabIndex={0} role="button" aria-label="Reset all filters">
               <div className="brand-mark" aria-hidden="true">
                 <Image
                   src={state.darkMode ? "/Zegion_white.svg" : "/Zegion_Dark.svg"}

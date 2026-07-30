@@ -158,12 +158,13 @@ export default function MobileSortPicker({ value, onChange, onClose, dial, rowGa
       <div className="border-t" style={{ borderColor: 'var(--border)', marginLeft: hoverPadX, marginRight: hoverPadX }} />
       <div className="flex flex-col max-h-[50vh] overflow-y-auto" style={{ gap: rowGap }}>
         {rules.map((rule, i) => (
-          <div key={i} className="flex items-center gap-2 transition-colors hover:bg-black/5 dark:hover:bg-white/10" style={{ borderRadius: hoverRad, background: i % 2 === 1 ? segBg : 'transparent', padding: `${hoverPadY}px ${hoverPadX}px` }}>
+          <div key={rule.field} className="flex items-center gap-2 transition-colors hover:bg-black/5 dark:hover:bg-white/10" style={{ borderRadius: hoverRad, background: i % 2 === 1 ? segBg : 'transparent', padding: `${hoverPadY}px ${hoverPadX}px` }}>
             <div className="flex items-center gap-1.5 flex-1 min-w-0">
               <select
+                aria-label="Sort field"
                 value={rule.field}
                 onChange={(e) => changeField(i, e.target.value as SortField)}
-                className="flex-1 min-w-0 text-sm font-medium bg-transparent border-0 outline-none cursor-pointer"
+                className="flex-1 min-w-0 text-sm font-medium bg-transparent border-0 outline-none cursor-pointer focus-visible:bg-black/5 dark:focus-visible:bg-white/10"
                 style={{ color: textColor, WebkitAppearance: 'none', MozAppearance: 'none', fontWeight: fontWeight || 600 }}
               >
                 {SORT_FIELDS.map((f) => {

@@ -170,21 +170,26 @@ function Highlight<T extends React.ElementType = 'div'>({
     boundsOffsetHeight,
   ]);
 
-  const [activeValue, setActiveValue] = React.useState<string | null>(
-    value ?? defaultValue ?? null,
+  const [internalValue, setInternalValue] = React.useState<string | null>(
+    defaultValue ?? null,
   );
+  const activeValue = value !== undefined ? value : internalValue;
   const [boundsState, setBoundsState] = React.useState<Bounds | null>(null);
   const [activeClassNameState, setActiveClassNameState] =
     React.useState<string>('');
 
   const safeSetActiveValue = (id: string | null) => {
-    setActiveValue((prev) => {
-      if (prev !== id) {
-        onValueChange?.(id);
-        return id;
-      }
-      return prev;
-    });
+    if (value === undefined) {
+      setInternalValue((prev) => {
+        if (prev !== id) {
+          onValueChange?.(id);
+          return id;
+        }
+        return prev;
+      });
+    } else {
+      onValueChange?.(id);
+    }
   };
 
   const safeSetBoundsRef = React.useRef<
@@ -227,11 +232,6 @@ function Highlight<T extends React.ElementType = 'div'>({
     setBoundsState((prev) => (prev === null ? prev : null));
   }, []);
 
-  React.useEffect(() => {
-    if (value !== undefined) setActiveValue(value);
-    else if (defaultValue !== undefined) setActiveValue(defaultValue);
-  }, [value, defaultValue]);
-
   const id = React.useId();
 
   React.useEffect(() => {
@@ -265,20 +265,8 @@ function Highlight<T extends React.ElementType = 'div'>({
             {boundsState && (
               <motion.div
                 data-slot="motion-highlight"
-                animate={{
-                  top: boundsState.top,
-                  left: boundsState.left,
-                  width: boundsState.width,
-                  height: boundsState.height,
-                  opacity: 1,
-                }}
-                initial={{
-                  top: boundsState.top,
-                  left: boundsState.left,
-                  width: boundsState.width,
-                  height: boundsState.height,
-                  opacity: 0,
-                }}
+                animate={{ opacity: 1 }}
+                initial={{ opacity: 0 }}
                 exit={{
                   opacity: 0,
                   transition: {
@@ -287,7 +275,15 @@ function Highlight<T extends React.ElementType = 'div'>({
                   },
                 }}
                 transition={transition}
-                style={{ position: 'absolute', zIndex: 0, ...style }}
+                style={{
+                  position: 'absolute',
+                  zIndex: 0,
+                  top: boundsState.top,
+                  left: boundsState.left,
+                  width: boundsState.width,
+                  height: boundsState.height,
+                  ...style,
+                }}
                 className={cn(className, activeClassNameState)}
               />
             )}
@@ -327,8 +323,8 @@ function Highlight<T extends React.ElementType = 'div'>({
         ? controlledItems
           ? render(children)
           : render(
-              React.Children.map(children, (child, index) => (
-                <HighlightItem key={index} className={props?.itemsClassName}>
+              React.Children.map(children, (child) => (
+                <HighlightItem className={props?.itemsClassName}>
                   {child}
                 </HighlightItem>
               )),

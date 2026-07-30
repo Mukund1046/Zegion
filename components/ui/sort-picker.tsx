@@ -252,7 +252,7 @@ const SelectableField = React.forwardRef<HTMLButtonElement, SelectableFieldProps
         ...(letterSpacing != null ? { letterSpacing } : {}),
         ...(noWrap ? { whiteSpace: 'nowrap' as const } : {}),
       }}
-      className="flex h-full w-full cursor-pointer items-center justify-center border-0 bg-transparent text-center font-semibold text-black outline-none disabled:cursor-default dark:text-white"
+      className="flex h-full w-full cursor-pointer items-center justify-center border-0 bg-transparent text-center font-semibold text-black outline-none disabled:cursor-default dark:text-white focus-visible:bg-black/5 dark:focus-visible:bg-white/10"
     >
       {icon && <span className="text-sm">{icon}</span>}
       <span>{label}</span>
@@ -501,7 +501,7 @@ function SortPicker({
       style={{ opacity: disabled ? disabledOp : undefined }}
     >
       {localRules.map((rule, i) => (
-        <React.Fragment key={i}>
+        <React.Fragment key={rule.field}>
           <SquircleSegment
             leftRadius={i === 0 ? cornerRadiusVal : innerRadius}
             rightRadius={innerRadius}
@@ -544,10 +544,9 @@ function SortPicker({
                         const otherIndex = localRules.findIndex((r, j) => j !== i && r.field === f.value)
                         const isCurrent = f.value === rule.field
                         return (
-                          <div
+                          <button
+                            type="button"
                             key={f.value}
-                            role="button"
-                            tabIndex={0}
                             onClick={() => {
                               changeField(i, f.value)
                               setOpenFieldMenuIndex(null)
@@ -559,7 +558,7 @@ function SortPicker({
                                 setOpenFieldMenuIndex(null)
                               }
                             }}
-                            className="flex w-full items-center gap-2 text-left text-sm font-medium outline-none min-h-[36px] cursor-pointer transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+                            className="flex w-full items-center gap-2 text-left text-sm font-medium outline-none min-h-[36px] cursor-pointer transition-colors hover:bg-black/5 dark:hover:bg-white/10 focus-visible:bg-black/5 dark:focus-visible:bg-white/10"
                             style={{
                               padding: `${fieldPopoverHoverPaddingY}px ${fieldPopoverHoverPaddingX}px`,
                               borderRadius: `${fieldPopoverHoverBorderRadius}px`,
@@ -573,15 +572,15 @@ function SortPicker({
                             {isCurrent && <HugeiconsIcon icon={CheckIcon} size={iconSz} color="currentColor" strokeWidth={iconStrokeVal} />}
                             {!isCurrent && otherIndex !== -1 && <HugeiconsIcon icon={ArrowDataTransferHorizontalIcon} size={iconSz} color="currentColor" strokeWidth={iconStrokeVal} />}
                             <span>{f.label}</span>
-                          </div>
+                            {otherIndex !== -1 && !isCurrent && <span className="ml-auto text-[11px] text-muted-foreground/60">Used</span>}
+                          </button>
                         )
                       })}
                       {localRules.length > 1 && (
                         <>
                           <div className="border-t border-border mx-3" />
-                          <div
-                            role="button"
-                            tabIndex={0}
+                          <button
+                            type="button"
                             onClick={() => {
                               removeField(i)
                               setOpenFieldMenuIndex(null)
@@ -593,7 +592,7 @@ function SortPicker({
                                 setOpenFieldMenuIndex(null)
                               }
                             }}
-                            className="flex w-full items-center gap-2 text-left text-sm font-medium outline-none min-h-[36px] cursor-pointer transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+                            className="flex w-full items-center gap-2 text-left text-sm font-medium outline-none min-h-[36px] cursor-pointer transition-colors hover:bg-black/5 dark:hover:bg-white/10 focus-visible:bg-black/5 dark:focus-visible:bg-white/10"
                             style={{
                               padding: `${fieldPopoverHoverPaddingY}px ${fieldPopoverHoverPaddingX}px`,
                               borderRadius: `${fieldPopoverHoverBorderRadius}px`,
@@ -602,7 +601,7 @@ function SortPicker({
                           >
                             <HugeiconsIcon icon={Delete01Icon} size={iconSz} color="currentColor" strokeWidth={iconStrokeVal} />
                             <span>Remove</span>
-                          </div>
+                          </button>
                         </>
                       )}
                     </div>
@@ -622,7 +621,8 @@ function SortPicker({
               type="button"
               onClick={() => cycleDirection(i)}
               disabled={!isEditing}
-              className="flex h-full w-full cursor-pointer items-center justify-center border-0 bg-transparent outline-none disabled:cursor-default"
+              aria-label="Toggle sort direction"
+              className="flex h-full w-full cursor-pointer items-center justify-center border-0 bg-transparent outline-none disabled:cursor-default focus-visible:bg-black/5 dark:focus-visible:bg-white/10"
               style={{ color: iconColor, x: swayX }}
             >
               <HugeiconsIcon
@@ -655,7 +655,7 @@ function SortPicker({
                 backgroundColor: segBg,
                 cursor: isEditing ? 'pointer' : 'default',
               }}
-              className="flex shrink-0 h-12 w-8 items-center justify-center border-0 bg-transparent text-muted-foreground/60 outline-none disabled:opacity-40"
+              className="flex shrink-0 h-12 w-8 items-center justify-center border-0 bg-transparent text-muted-foreground/60 outline-none disabled:opacity-40 focus-visible:bg-black/5 dark:focus-visible:bg-white/10"
             >
               <HugeiconsIcon icon={PlusSignIcon} size={iconSz} color="currentColor" strokeWidth={iconStrokeVal} />
             </button>
@@ -692,7 +692,7 @@ function SortPicker({
                         setIsEditing(true)
                       }}
                       disabled={isUsed}
-                      className="flex w-full items-center gap-2 text-left text-sm font-medium outline-none transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+                      className="flex w-full items-center gap-2 text-left text-sm font-medium outline-none transition-colors hover:bg-black/5 dark:hover:bg-white/10 focus-visible:bg-black/5 dark:focus-visible:bg-white/10"
                       style={{
                         padding: `${addPopoverHoverPaddingY}px ${addPopoverHoverPaddingX}px`,
                         borderRadius: `${addPopoverHoverBorderRadius}px`,

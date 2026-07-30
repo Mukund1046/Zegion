@@ -7,6 +7,8 @@ import {
 import { requireLocalOrApiKey } from "@/lib/api-auth";
 import type { CookieConfig } from "@/lib/cookie-config";
 
+const VALID_BROWSERS = ["chrome", "firefox", "edge", "brave"];
+
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
@@ -40,10 +42,9 @@ export async function POST(request: Request) {
     }
 
     if (body.source === "auto" && body.browser) {
-      const valid = ["chrome", "firefox", "edge", "brave"];
-      if (!valid.includes(body.browser)) {
+      if (!VALID_BROWSERS.includes(body.browser)) {
         return NextResponse.json(
-          { error: `browser must be one of: ${valid.join(", ")}` },
+          { error: `browser must be one of: ${VALID_BROWSERS.join(", ")}` },
           { status: 400 }
         );
       }
