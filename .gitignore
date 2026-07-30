@@ -11,6 +11,11 @@ next-env.d.ts
 # Runtime data
 data/
 
+# Agent skills
+.agents/skills/
+Skills/
+skills-lock.json
+
 # OS
 .DS_Store
 Thumbs.db
