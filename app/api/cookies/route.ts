@@ -4,10 +4,15 @@ import {
   writeCookieConfig,
   describeCookieMode,
 } from "@/lib/cookie-config";
-import { requireLocalOrApiKey } from "@/lib/api-auth";
-import type { CookieConfig } from "@/lib/cookie-config";
+import { requireLocalOrApiKey, sanitizeError } from "@/lib/api-auth";
+import { z } from "zod";
 
-const VALID_BROWSERS = ["chrome", "firefox", "edge", "brave"];
+const cookieConfigSchema = z.object({
+  source: z.enum(["auto", "manual"]),
+  browser: z.enum(["chrome", "firefox", "edge", "brave"]).optional(),
+  ct0: z.string().max(1024).optional(),
+  authToken: z.string().max(1024).optional(),
+});
 
 export const dynamic = "force-dynamic";
 
@@ -32,29 +37,22 @@ export async function POST(request: Request) {
   if (auth) return auth;
 
   try {
-    const body = (await request.json()) as Partial<CookieConfig>;
+    const parsed = cookieConfigSchema.safeParse(await request.json());
 
-    if (body.source !== "auto" && body.source !== "manual") {
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "source must be 'auto' or 'manual'" },
+        { error: parsed.error.issues[0]?.message ?? "Invalid request" },
         { status: 400 }
       );
     }
 
-    if (body.source === "auto" && body.browser) {
-      if (!VALID_BROWSERS.includes(body.browser)) {
-        return NextResponse.json(
-          { error: `browser must be one of: ${VALID_BROWSERS.join(", ")}` },
-          { status: 400 }
-        );
-      }
-    }
+    const { source, browser, ct0, authToken } = parsed.data;
 
-    const next: CookieConfig = {
-      source: body.source,
-      browser: body.source === "auto" ? body.browser || "firefox" : undefined,
-      ct0: body.source === "manual" ? body.ct0 : undefined,
-      authToken: body.source === "manual" ? body.authToken : undefined,
+    const next = {
+      source,
+      browser: source === "auto" ? browser || "firefox" : undefined,
+      ct0: source === "manual" ? ct0 : undefined,
+      authToken: source === "manual" ? authToken : undefined,
     };
 
     const saved = writeCookieConfig(next);
@@ -71,7 +69,7 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to save cookie config" },
+      { error: sanitizeError(error) },
       { status: 500 }
     );
   }

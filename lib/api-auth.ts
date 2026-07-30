@@ -9,7 +9,7 @@ export function sanitizeError(error: unknown): string {
 }
 
 export function requireLocalOrApiKey(request: Request): NextResponse | null {
-  const apiKey = process.env.NEXT_PUBLIC_X_API_KEY;
+  const apiKey = process.env.X_API_KEY;
 
   if (apiKey) {
     const header = request.headers.get("x-api-key");
