@@ -699,6 +699,8 @@ function SearchCommand({
     hoverPaddingY: [0, 0, 12, 1],
     maxResults: [50, 5, 200, 5],
     badgeFontSize: [11, 9, 16, 1],
+    pillPaddingX: [10, 0, 32, 1],
+    pillPaddingY: [4, 0, 16, 1],
     prefixBadgeBg: { type: "color", default: "#e8e8ed" },
     prefixBadgeBgDark: { type: "color", default: "#2a2a2a" },
   });
@@ -743,10 +745,10 @@ function SearchCommand({
   const domains = useMemo(() => {
     const map = new Map<string, number>();
     for (const b of state.allBookmarks) {
-      try {
-        const domain = new URL(b.url).hostname.replace(/^www\./, "");
+      const list = b.linkedDomains?.length ? b.linkedDomains : b.domains ?? [];
+      for (const domain of list) {
         map.set(domain, (map.get(domain) || 0) + 1);
-      } catch {}
+      }
     }
     return [...map.entries()]
       .sort((a, b) => b[1] - a[1])
@@ -815,6 +817,8 @@ function SearchCommand({
   const hpX = cmdParams.hoverPaddingX as number;
   const hpY = cmdParams.hoverPaddingY as number;
   const bfs = cmdParams.badgeFontSize as number;
+  const ppX = cmdParams.pillPaddingX as number;
+  const ppY = cmdParams.pillPaddingY as number;
 
   function highlightText(text: string, q: string) {
     if (!q.trim()) return text;
@@ -894,8 +898,8 @@ function SearchCommand({
                     <span className="truncate text-xs text-muted-foreground">@{author.handle}</span>
                   </div>
                   <span
-                    className="shrink-0 rounded-md px-2 py-0.5 text-xs font-medium"
-                    style={{ fontSize: bfs, background: state.darkMode ? cmdParams.prefixBadgeBgDark as string : cmdParams.prefixBadgeBg as string }}
+                    className="shrink-0 rounded-md text-xs font-semibold capitalize tracking-wide"
+                    style={{ paddingLeft: ppX, paddingRight: ppX, paddingTop: ppY, paddingBottom: ppY, fontSize: bfs, background: state.darkMode ? cmdParams.prefixBadgeBgDark as string : cmdParams.prefixBadgeBg as string }}
                   >
                     {author.count}
                   </span>
@@ -933,8 +937,8 @@ function SearchCommand({
                     </span>
                   </div>
                   <span
-                    className="shrink-0 rounded-md px-2 py-0.5 text-xs font-medium"
-                    style={{ fontSize: bfs, background: state.darkMode ? cmdParams.prefixBadgeBgDark as string : cmdParams.prefixBadgeBg as string }}
+                    className="shrink-0 rounded-md text-xs font-semibold capitalize tracking-wide"
+                    style={{ paddingLeft: ppX, paddingRight: ppX, paddingTop: ppY, paddingBottom: ppY, fontSize: bfs, background: state.darkMode ? cmdParams.prefixBadgeBgDark as string : cmdParams.prefixBadgeBg as string }}
                   >
                     {cat.count}
                   </span>
@@ -974,8 +978,8 @@ function SearchCommand({
                     <span className="truncate text-sm font-medium text-foreground">{domain.name}</span>
                   </div>
                   <span
-                    className="shrink-0 rounded-md px-2 py-0.5 text-xs font-medium"
-                    style={{ fontSize: bfs, background: state.darkMode ? cmdParams.prefixBadgeBgDark as string : cmdParams.prefixBadgeBg as string }}
+                    className="shrink-0 rounded-md text-xs font-semibold capitalize tracking-wide"
+                    style={{ paddingLeft: ppX, paddingRight: ppX, paddingTop: ppY, paddingBottom: ppY, fontSize: bfs, background: state.darkMode ? cmdParams.prefixBadgeBgDark as string : cmdParams.prefixBadgeBg as string }}
                   >
                     {domain.count}
                   </span>
@@ -1043,7 +1047,7 @@ function SearchCommand({
                           </p>
                         </div>
                         <div className="flex shrink-0 flex-col items-end gap-1">
-                          <Badge variant="outline" size="sm">{bookmark.folders[0] ?? "Uncategorized"}</Badge>
+                          <Badge variant="outline" size="sm" className="capitalize tracking-wide" style={{ paddingLeft: ppX, paddingRight: ppX, paddingTop: ppY, paddingBottom: ppY }}>{bookmark.category || (bookmark.folders[0] ?? "Uncategorized")}</Badge>
                         </div>
                       </button>
                     ))

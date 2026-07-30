@@ -56,6 +56,8 @@ export const formatCount = (value = 0) => {
 };
 
 export const getBookmarkDomain = (bookmark: Bookmark) => {
+  const linked = bookmark.domain ?? bookmark.linkedDomains?.[0];
+  if (linked) return linked;
   try {
     return new URL(bookmark.url).hostname.replace(/^www\./, "");
   } catch {
@@ -208,7 +210,8 @@ export const matchesActiveFacet = (
     return (bookmark.category || "unclassified") === activeFacetValue;
   }
   if (activeFacetType === "domain") {
-    return getBookmarkDomain(bookmark) === activeFacetValue;
+    const linked = bookmark.linkedDomains ?? (bookmark.domain ? [bookmark.domain] : []);
+    return linked.includes(activeFacetValue) || getBookmarkDomain(bookmark) === activeFacetValue;
   }
   if (activeFacetType === "linkedDomain") {
     return (bookmark.linkedDomains || []).includes(activeFacetValue);
