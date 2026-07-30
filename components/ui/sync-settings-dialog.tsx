@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { AnimatePresence, motion } from "motion/react";
 import { apiFetch } from "@/lib/client-api";
 import { useDialKit } from "dialkit";
 import { syncSettingsDialConfig } from "@/components/ui/sync-settings-dial-config";
@@ -330,140 +329,140 @@ export default function SyncSettingsDialog({
                 </span>
               </button>
 
-              <AnimatePresence initial={false}>
-                {isAuto && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: "auto", opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-                    style={{ overflow: "hidden" }}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateRows: isAuto ? "1fr" : "0fr",
+                  opacity: isAuto ? 1 : 0,
+                  transition: "grid-template-rows 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                }}
+              >
+                <div style={{ minHeight: 0, overflow: "hidden" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: fc.gap,
+                      padding: `${fc.paddingY}px ${fc.paddingX}px`,
+                      borderRadius: fc.borderRadius,
+                      border: `1px solid ${fc.borderColor}`,
+                      background: fc.bg as string,
+                      marginLeft: p.Section.sectionPaddingX,
+                    }}
                   >
+                    {/* Auto content */}
                     <div
                       style={{
                         display: "flex",
                         flexDirection: "column",
-                        gap: fc.gap,
-                        padding: `${fc.paddingY}px ${fc.paddingX}px`,
-                        borderRadius: fc.borderRadius,
-                        border: `1px solid ${fc.borderColor}`,
-                        background: fc.bg as string,
-                        marginLeft: p.Section.sectionPaddingX,
+                        gap: fc.inputGap,
                       }}
                     >
-                      <div
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: fc.inputGap,
-                        }}
-                      >
-                        <div style={{ fontSize: fc.labelSize, fontWeight: fc.labelWeight, color: fc.labelColor as string }}>
-                          Browser
-                        </div>
-                        <div style={{ position: "relative" }}>
-                          <button
-                            type="button"
-                            onClick={() => setDropdownOpen(!dropdownOpen)}
+                      <div style={{ fontSize: fc.labelSize, fontWeight: fc.labelWeight, color: fc.labelColor as string }}>
+                        Browser
+                      </div>
+                      <div style={{ position: "relative" }}>
+                        <button
+                          type="button"
+                          onClick={() => setDropdownOpen(!dropdownOpen)}
+                          style={{
+                            height: dd.height,
+                            borderRadius: dd.borderRadius,
+                            paddingLeft: dd.paddingX,
+                            paddingRight: dd.paddingX,
+                            fontSize: dd.fontSize,
+                            width: (dd.width as number) > 0 ? dd.width : "100%",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 8,
+                            cursor: "pointer",
+                            color: "var(--foreground)",
+                            background: dd.bg as string,
+                            border: `1px solid ${dd.borderColor}`,
+                            transition: "border-color 0.15s ease",
+                          }}
+                          className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          <span>{BROWSER_OPTIONS.find((b) => b.id === config.browser)?.label}</span>
+                          <span
                             style={{
-                              height: dd.height,
-                              borderRadius: dd.borderRadius,
-                              paddingLeft: dd.paddingX,
-                              paddingRight: dd.paddingX,
-                              fontSize: dd.fontSize,
-                              width: (dd.width as number) > 0 ? dd.width : "100%",
-                              display: "flex",
+                              display: "inline-flex",
                               alignItems: "center",
-                              justifyContent: "space-between",
-                              gap: 8,
-                              cursor: "pointer",
-                              color: "var(--foreground)",
-                              background: dd.bg as string,
-                              border: `1px solid ${dd.borderColor}`,
-                              transition: "border-color 0.15s ease",
+                              transform: `rotate(${dropdownOpen ? 180 : 0}deg)`,
+                              transition: "transform 0.2s ease",
+                              opacity: 0.5,
                             }}
-                            className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           >
-                            <span>{BROWSER_OPTIONS.find((b) => b.id === config.browser)?.label}</span>
-                            <span
+                            <HugeiconsIcon icon={ChevronDownIcon} size={dd.checkSize} />
+                          </span>
+                        </button>
+                        {dropdownOpen && (
+                          <>
+                            <button type="button" aria-label="Close dropdown" className="fixed inset-0 z-40 cursor-default" onClick={() => setDropdownOpen(false)} onKeyDown={(e) => { if (e.key === 'Escape') setDropdownOpen(false) }} />
+                            <div
                               style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                transform: `rotate(${dropdownOpen ? 180 : 0}deg)`,
-                                transition: "transform 0.2s ease",
-                                opacity: 0.5,
+                                position: "absolute",
+                                left: 0,
+                                right: 0,
+                                top: "100%",
+                                marginTop: 4,
+                                zIndex: 50,
+                                borderRadius: dd.borderRadius,
+                                border: `1px solid ${dd.menuBorder}`,
+                                background: dd.menuBg as string,
+                                padding: 4,
+                                boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
                               }}
                             >
-                              <HugeiconsIcon icon={ChevronDownIcon} size={dd.checkSize} />
-                            </span>
-                          </button>
-                          {dropdownOpen && (
-                            <>
-                              <button type="button" aria-label="Close dropdown" className="fixed inset-0 z-40 cursor-default" onClick={() => setDropdownOpen(false)} onKeyDown={(e) => { if (e.key === 'Escape') setDropdownOpen(false) }} />
-                              <div
-                                style={{
-                                  position: "absolute",
-                                  left: 0,
-                                  right: 0,
-                                  top: "100%",
-                                  marginTop: 4,
-                                  zIndex: 50,
-                                  borderRadius: dd.borderRadius,
-                                  border: `1px solid ${dd.menuBorder}`,
-                                  background: dd.menuBg as string,
-                                  padding: 4,
-                                  boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
-                                }}
-                              >
-                                {BROWSER_OPTIONS.map((b) => {
-                                  const selected = config.browser === b.id;
-                                  return (
-                                    <button
-                                      key={b.id}
-                                      type="button"
-                                      onClick={() => {
-                                        setConfig((prev) => ({ ...prev, browser: b.id }));
-                                        setDropdownOpen(false);
-                                      }}
-                                      style={{
-                                        display: "flex",
-                                        width: "100%",
-                                        alignItems: "center",
-                                        gap: dd.itemGap,
-                                        padding: `${dd.itemPaddingY}px ${dd.itemPaddingX}px`,
-                                        borderRadius: (dd.borderRadius as number) - 2,
-                                        fontSize: dd.itemFontSize,
-                                        cursor: "pointer",
-                                        color: "var(--foreground)",
-                                        background: selected ? (dd.itemHoverBg as string) : "transparent",
-                                        border: "none",
-                                        textAlign: "left",
-                                        transition: "background 0.1s ease",
-                                      }}
-                                      onMouseEnter={(e) => { e.currentTarget.style.background = dd.itemHoverBg as string }}
-                                      onMouseLeave={(e) => { e.currentTarget.style.background = selected ? (dd.itemHoverBg as string) : "transparent" }}
-                                    >
-                                      <span style={{ width: dd.checkSize, display: "flex", alignItems: "center", flexShrink: 0 }}>
-                                        {selected && (
-                                          <HugeiconsIcon icon={CheckIcon} size={dd.checkSize} strokeWidth={2.5} />
-                                        )}
-                                      </span>
-                                      <span>{b.label}</span>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </>
-                          )}
-                        </div>
+                              {BROWSER_OPTIONS.map((b) => {
+                                const selected = config.browser === b.id;
+                                return (
+                                  <button
+                                    key={b.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setConfig((prev) => ({ ...prev, browser: b.id }));
+                                      setDropdownOpen(false);
+                                    }}
+                                    style={{
+                                      display: "flex",
+                                      width: "100%",
+                                      alignItems: "center",
+                                      gap: dd.itemGap,
+                                      padding: `${dd.itemPaddingY}px ${dd.itemPaddingX}px`,
+                                      borderRadius: (dd.borderRadius as number) - 2,
+                                      fontSize: dd.itemFontSize,
+                                      cursor: "pointer",
+                                      color: "var(--foreground)",
+                                      background: selected ? (dd.itemHoverBg as string) : "transparent",
+                                      border: "none",
+                                      textAlign: "left",
+                                      transition: "background 0.1s ease",
+                                    }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.background = dd.itemHoverBg as string }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.background = selected ? (dd.itemHoverBg as string) : "transparent" }}
+                                  >
+                                    <span style={{ width: dd.checkSize, display: "flex", alignItems: "center", flexShrink: 0 }}>
+                                      {selected && (
+                                        <HugeiconsIcon icon={CheckIcon} size={dd.checkSize} strokeWidth={2.5} />
+                                      )}
+                                    </span>
+                                    <span>{b.label}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </>
+                        )}
                       </div>
-                      <p style={{ fontSize: fc.noteSize, color: "var(--muted-foreground)", lineHeight: 1.4, margin: 0 }}>
-                        {BROWSER_OPTIONS.find((b) => b.id === config.browser)?.note}
-                      </p>
                     </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                    <p style={{ fontSize: fc.noteSize, color: "var(--muted-foreground)", lineHeight: 1.4, margin: 0 }}>
+                      {BROWSER_OPTIONS.find((b) => b.id === config.browser)?.note}
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Choice: Manual */}
@@ -530,97 +529,96 @@ export default function SyncSettingsDialog({
                 </span>
               </button>
 
-              <AnimatePresence initial={false}>
-                {isManual && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: "auto", opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-                    style={{ overflow: "hidden" }}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateRows: isManual ? "1fr" : "0fr",
+                  opacity: isManual ? 1 : 0,
+                  transition: "grid-template-rows 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                }}
+              >
+                <div style={{ minHeight: 0, overflow: "hidden" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: fc.gap,
+                      padding: `${fc.paddingY}px ${fc.paddingX}px`,
+                      borderRadius: fc.borderRadius,
+                      border: `1px solid ${fc.borderColor}`,
+                      background: fc.bg as string,
+                      marginLeft: p.Section.sectionPaddingX,
+                    }}
                   >
                     <div
                       style={{
                         display: "flex",
                         flexDirection: "column",
-                        gap: fc.gap,
-                        padding: `${fc.paddingY}px ${fc.paddingX}px`,
-                        borderRadius: fc.borderRadius,
-                        border: `1px solid ${fc.borderColor}`,
-                        background: fc.bg as string,
-                        marginLeft: p.Section.sectionPaddingX,
+                        gap: fc.inputGap,
                       }}
                     >
-                      <div
+                      <Field>
+                        <FieldLabel style={{ fontSize: fc.labelSize, fontWeight: fc.labelWeight, color: fc.labelColor as string }}>
+                          ct0
+                        </FieldLabel>
+                        <Input
+                          type="password"
+                          placeholder="Paste ct0 cookie value"
+                          value={config.ct0}
+                          onChange={(e) => setConfig((c) => ({ ...c, ct0: e.target.value }))}
+                          style={{
+                            padding: `${fc.inputPaddingY}px ${fc.inputPaddingX}px`,
+                            borderRadius: fc.inputBorderRadius,
+                            fontSize: fc.inputFontSize,
+                          }}
+                        />
+                      </Field>
+                      <Field>
+                        <FieldLabel style={{ fontSize: fc.labelSize, fontWeight: fc.labelWeight, color: fc.labelColor as string }}>
+                          auth_token
+                        </FieldLabel>
+                        <Input
+                          type="password"
+                          placeholder="Paste auth_token cookie value"
+                          value={config.authToken}
+                          onChange={(e) => setConfig((c) => ({ ...c, authToken: e.target.value }))}
+                          style={{
+                            padding: `${fc.inputPaddingY}px ${fc.inputPaddingX}px`,
+                            borderRadius: fc.inputBorderRadius,
+                            fontSize: fc.inputFontSize,
+                          }}
+                        />
+                      </Field>
+                    </div>
+                    <p style={{ fontSize: fc.noteSize, color: "var(--muted-foreground)", lineHeight: 1.4, margin: 0 }}>
+                      X.com → DevTools → Application → Cookies →{" "}
+                      <code
                         style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: fc.inputGap,
+                          borderRadius: 4,
+                          border: "1px solid var(--border)",
+                          background: "var(--background)",
+                          padding: "1px 6px",
+                          fontSize: fc.noteSize,
                         }}
                       >
-                        <Field>
-                          <FieldLabel style={{ fontSize: fc.labelSize, fontWeight: fc.labelWeight, color: fc.labelColor as string }}>
-                            ct0
-                          </FieldLabel>
-                          <Input
-                            type="password"
-                            placeholder="Paste ct0 cookie value"
-                            value={config.ct0}
-                            onChange={(e) => setConfig((c) => ({ ...c, ct0: e.target.value }))}
-                            style={{
-                              padding: `${fc.inputPaddingY}px ${fc.inputPaddingX}px`,
-                              borderRadius: fc.inputBorderRadius,
-                              fontSize: fc.inputFontSize,
-                            }}
-                          />
-                        </Field>
-                        <Field>
-                          <FieldLabel style={{ fontSize: fc.labelSize, fontWeight: fc.labelWeight, color: fc.labelColor as string }}>
-                            auth_token
-                          </FieldLabel>
-                          <Input
-                            type="password"
-                            placeholder="Paste auth_token cookie value"
-                            value={config.authToken}
-                            onChange={(e) => setConfig((c) => ({ ...c, authToken: e.target.value }))}
-                            style={{
-                              padding: `${fc.inputPaddingY}px ${fc.inputPaddingX}px`,
-                              borderRadius: fc.inputBorderRadius,
-                              fontSize: fc.inputFontSize,
-                            }}
-                          />
-                        </Field>
-                      </div>
-                      <p style={{ fontSize: fc.noteSize, color: "var(--muted-foreground)", lineHeight: 1.4, margin: 0 }}>
-                        X.com → DevTools → Application → Cookies →{" "}
-                        <code
-                          style={{
-                            borderRadius: 4,
-                            border: "1px solid var(--border)",
-                            background: "var(--background)",
-                            padding: "1px 6px",
-                            fontSize: fc.noteSize,
-                          }}
-                        >
-                          ct0
-                        </code>
-                        {" & "}
-                        <code
-                          style={{
-                            borderRadius: 4,
-                            border: "1px solid var(--border)",
-                            background: "var(--background)",
-                            padding: "1px 6px",
-                            fontSize: fc.noteSize,
-                          }}
-                        >
-                          auth_token
-                        </code>
-                      </p>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                        ct0
+                      </code>
+                      {" & "}
+                      <code
+                        style={{
+                          borderRadius: 4,
+                          border: "1px solid var(--border)",
+                          background: "var(--background)",
+                          padding: "1px 6px",
+                          fontSize: fc.noteSize,
+                        }}
+                      >
+                        auth_token
+                      </code>
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Status */}
