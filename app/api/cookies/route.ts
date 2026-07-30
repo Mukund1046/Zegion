@@ -4,11 +4,15 @@ import {
   writeCookieConfig,
   describeCookieMode,
 } from "@/lib/cookie-config";
+import { requireLocalOrApiKey } from "@/lib/api-auth";
 import type { CookieConfig } from "@/lib/cookie-config";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const auth = requireLocalOrApiKey(request);
+  if (auth) return auth;
+
   const config = readCookieConfig();
   const mode = describeCookieMode(config);
   return NextResponse.json({
@@ -22,6 +26,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const auth = requireLocalOrApiKey(request);
+  if (auth) return auth;
+
   try {
     const body = (await request.json()) as Partial<CookieConfig>;
 

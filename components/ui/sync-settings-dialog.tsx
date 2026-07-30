@@ -1,23 +1,32 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { apiFetch } from "@/lib/client-api";
 import { useDialKit } from "dialkit";
 import { syncSettingsDialConfig } from "@/components/ui/sync-settings-dial-config";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
+  Drawer,
+  DrawerClose,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerPanel,
+  DrawerPopup,
+  DrawerTitle,
+} from "@/components/ui/drawer";
+import { Field, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { XIcon } from "lucide-react";
+import { HugeiconsIcon } from "@hugeicons/react";
 import {
-  Popover,
-  PopoverTrigger,
-  PopoverContent,
-} from '@/components/animate-ui/components/radix/popover'
-import { HugeiconsIcon } from '@hugeicons/react'
-import { CheckIcon, ChevronDownIcon } from '@hugeicons/core-free-icons'
+  CheckmarkCircle01Icon,
+  Cancel01Icon,
+  BrowserIcon,
+  ChevronDownIcon,
+  CheckIcon,
+  LockIcon,
+} from "@hugeicons/core-free-icons";
 
 const BROWSER_OPTIONS = [
   { id: "firefox", label: "Firefox", note: "Stores cookies in plaintext — works on Windows" },
@@ -38,7 +47,7 @@ const COOKIE_MODE_LABELS: Record<string, string> = {
 };
 
 interface ConfigState {
-  source: "auto" | "manual";
+  source: "auto" | "manual" | null;
   browser: string;
   ct0: string;
   authToken: string;
@@ -58,7 +67,7 @@ export default function SyncSettingsDialog({
   const p = useDialKit("Sync Settings", syncSettingsDialConfig);
 
   const [config, setConfig] = useState<ConfigState>({
-    source: "auto",
+    source: null,
     browser: "firefox",
     ct0: "",
     authToken: "",
@@ -71,17 +80,17 @@ export default function SyncSettingsDialog({
 
   const loadConfig = useCallback(async () => {
     try {
-      const res = await fetch("/api/cookies");
+      const res = await apiFetch("/api/cookies");
       if (!res.ok) return;
       const data = await res.json();
       setConfig((prev) => ({
         ...prev,
-        source: data.config?.source || "auto",
+        source: data.config?.source || null,
         browser: data.config?.browser || "firefox",
       }));
       setCookieMode(data.cookieMode);
-    } catch {
-      /* API unavailable */
+    } catch (e) {
+      console.warn("Failed to load cookie config", e);
     }
   }, []);
 
@@ -94,6 +103,7 @@ export default function SyncSettingsDialog({
   }, [open, loadConfig]);
 
   const handleSave = async () => {
+    if (!config.source) return;
     setSaving(true);
     setError(null);
     setShowSaved(false);
@@ -107,7 +117,7 @@ export default function SyncSettingsDialog({
         body.ct0 = config.ct0;
         body.authToken = config.authToken;
       }
-      const res = await fetch("/api/cookies", {
+      const res = await apiFetch("/api/cookies", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -128,358 +138,516 @@ export default function SyncSettingsDialog({
     }
   };
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="ring-0"
-        style={{
-          padding: `${p.Card.paddingY as number}px ${p.Card.paddingX as number}px`,
-          borderRadius: p.Card.borderRadius as number,
-          background: p.Card.cardBg as string,
-          gap: p.Card.cardGap as number,
-        }}
-        showCloseButton={false}
-      >
-        <button
-          type="button"
-          aria-label="Close"
+  const sc = p.ChoiceCard;
+  const fc = p.FieldCard;
+  const dd = p.Dropdown;
+  const sb = p.StatusBadge;
+
+  const statusBadge = () => {
+    if (showSaved) {
+      return (
+        <span
           style={{
-            position: "absolute",
-            top: p.CloseBtn.btnTop as number,
-            right: p.CloseBtn.btnRight as number,
-            width: p.CloseBtn.btnSize as number,
-            height: p.CloseBtn.btnSize as number,
-            display: "flex",
+            display: "inline-flex",
             alignItems: "center",
-            justifyContent: "center",
-            borderRadius: "6px",
-            border: "none",
-            cursor: "pointer",
-            color: p.CloseBtn.iconColor as string,
-            background: p.CloseBtn.btnBg as string,
-            transition: "background 0.15s ease",
+            gap: 6,
+            padding: `${sb.paddingY}px ${sb.paddingX}px`,
+            borderRadius: sb.borderRadius,
+            fontSize: sb.fontSize,
+            fontWeight: 500,
+            background: sb.successBg as string,
+            color: sb.successColor as string,
           }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = p.CloseBtn.btnHoverBg as string
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = p.CloseBtn.btnBg as string
-          }}
-          onClick={() => onOpenChange(false)}
         >
-          <svg
-            width={p.CloseBtn.iconSize as number}
-            height={p.CloseBtn.iconSize as number}
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
-        <DialogHeader style={{ gap: p.Header.headerGap as number }}>
-          <DialogTitle
-            style={{ fontSize: p.Header.titleSize as number }}
-          >
-            Sync Settings
-          </DialogTitle>
-          <DialogDescription
-            style={{ fontSize: p.Header.descriptionSize as number }}
-          >
-            Choose how to provide X / Twitter cookies for syncing.
-          </DialogDescription>
-        </DialogHeader>
-
-        {/* Auto-detect row */}
-        <div style={{ display: "flex", flexDirection: "column", gap: p.RadioRow.optionGap as number }}>
-          <label
-            className="flex items-start cursor-pointer group"
-            style={{ gap: p.RadioRow.radioGap as number }}
-          >
-            <input
-              type="radio"
-              name="cookie-source"
-              className="mt-0.5 accent-foreground shrink-0"
-              checked={config.source === "auto"}
-              onChange={() => setConfig((p) => ({ ...p, source: "auto" }))}
-            />
-            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              <span
-                className="font-medium leading-none group-hover:text-foreground transition-colors"
-                style={{ fontSize: p.RadioRow.labelSize as number }}
-              >
-                Auto-detect from browser
-              </span>
-              <span
-                className="text-muted-foreground"
-                style={{ fontSize: p.RadioRow.subtitleSize as number }}
-              >
-                Field Theory extracts cookies directly from the browser
-              </span>
-            </div>
-          </label>
-
-          {config.source === "auto" && (
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: p.Input.inputGap as number,
-                paddingLeft: p.RadioRow.indentLeft as number,
-              }}
-            >
-              <Popover open={dropdownOpen} onOpenChange={setDropdownOpen}>
-                <PopoverTrigger asChild>
-                  <button
-                    type="button"
-                    style={{
-                      height: p.Input.height as number,
-                      borderRadius: p.Input.borderRadius as number,
-                      paddingLeft: p.Input.paddingX as number,
-                      paddingRight: p.Input.paddingX as number,
-                      fontSize: p.Input.fontSize as number,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 8,
-                      cursor: "pointer",
-                    }}
-                    className="border border-input bg-background text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <span>{BROWSER_OPTIONS.find((b) => b.id === config.browser)?.label}</span>
-                    <span
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        transform: `rotate(${dropdownOpen ? 180 : 0}deg)`,
-                        transition: "transform 0.2s ease",
-                        opacity: 0.5,
-                      }}
-                    >
-                      <HugeiconsIcon icon={ChevronDownIcon} size={14} />
-                    </span>
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent
-                  align="start"
-                  sideOffset={4}
-                  className="w-auto border-0 shadow-lg p-1"
-                  style={{
-                    backgroundColor: "var(--popover)",
-                    borderRadius: p.Input.borderRadius as number,
-                    minWidth: p.Input.dropdownWidth as number,
-                  }}
-                >
-                  <div className="flex flex-col" style={{ gap: 2 }}>
-                    {BROWSER_OPTIONS.map((b) => {
-                      const selected = config.browser === b.id;
-                      return (
-                        <button
-                          key={b.id}
-                          type="button"
-                          onClick={() => setConfig((prev) => ({ ...prev, browser: b.id }))}
-                          className="flex w-full items-center gap-2 text-left text-sm font-medium outline-none cursor-pointer transition-colors hover:bg-black/5 dark:hover:bg-white/10"
-                          style={{
-                            padding: "6px 10px",
-                            borderRadius: (p.Input.borderRadius as number) - 2,
-                            color: selected ? "var(--foreground)" : "var(--foreground)",
-                          }}
-                        >
-                          <span style={{ width: 16, display: "flex", alignItems: "center", flexShrink: 0 }}>
-                            {selected && (
-                              <HugeiconsIcon icon={CheckIcon} size={14} />
-                            )}
-                          </span>
-                          <span>{b.label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </PopoverContent>
-              </Popover>
-              <p
-                className="text-muted-foreground leading-relaxed"
-                style={{ fontSize: p.Input.noteSize as number }}
-              >
-                {BROWSER_OPTIONS.find((b) => b.id === config.browser)?.note}
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* Manual row */}
-        <div style={{ display: "flex", flexDirection: "column", gap: p.RadioRow.optionGap as number }}>
-          <label
-            className="flex items-start cursor-pointer group"
-            style={{ gap: p.RadioRow.radioGap as number }}
-          >
-            <input
-              type="radio"
-              name="cookie-source"
-              className="mt-0.5 accent-foreground shrink-0"
-              checked={config.source === "manual"}
-              onChange={() => setConfig((p) => ({ ...p, source: "manual" }))}
-            />
-            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              <span
-                className="font-medium leading-none group-hover:text-foreground transition-colors"
-                style={{ fontSize: p.RadioRow.labelSize as number }}
-              >
-                Manually enter cookies
-              </span>
-              <span
-                className="text-muted-foreground"
-                style={{ fontSize: p.RadioRow.subtitleSize as number }}
-              >
-                Paste ct0 and auth_token from browser DevTools
-              </span>
-            </div>
-          </label>
-
-          {config.source === "manual" && (
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: p.Input.inputGap as number,
-                paddingLeft: p.RadioRow.indentLeft as number,
-              }}
-            >
-              <input
-                type="password"
-                placeholder="ct0"
-                style={{
-                  height: p.Input.height as number,
-                  borderRadius: p.Input.borderRadius as number,
-                  paddingLeft: p.Input.paddingX as number,
-                  paddingRight: p.Input.paddingX as number,
-                  fontSize: p.Input.fontSize as number,
-                }}
-                className="border border-input bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                value={config.ct0}
-                onChange={(e) =>
-                  setConfig((p) => ({ ...p, ct0: e.target.value }))
-                }
-              />
-              <input
-                type="password"
-                placeholder="auth_token"
-                style={{
-                  height: p.Input.height as number,
-                  borderRadius: p.Input.borderRadius as number,
-                  paddingLeft: p.Input.paddingX as number,
-                  paddingRight: p.Input.paddingX as number,
-                  fontSize: p.Input.fontSize as number,
-                }}
-                className="border border-input bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                value={config.authToken}
-                onChange={(e) =>
-                  setConfig((p) => ({ ...p, authToken: e.target.value }))
-                }
-              />
-              <p
-                className="text-muted-foreground leading-relaxed"
-                style={{ fontSize: p.Input.noteSize as number }}
-              >
-                X.com → DevTools → Application → Cookies →{" "}
-                <code className="bg-muted px-1 py-0.5 rounded" style={{ fontSize: p.Input.noteSize as number }}>
-                  ct0
-                </code>
-                {" & "}
-                <code className="bg-muted px-1 py-0.5 rounded" style={{ fontSize: p.Input.noteSize as number }}>
-                  auth_token
-                </code>
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* Status bar */}
-        {showSaved && (
-          <div
-            className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+          <HugeiconsIcon icon={CheckmarkCircle01Icon} size={14} />
+          Settings saved
+        </span>
+      );
+    }
+    if (error) {
+      return (
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            padding: `${sb.paddingY}px ${sb.paddingX}px`,
+            borderRadius: sb.borderRadius,
+            fontSize: sb.fontSize,
+            fontWeight: 500,
+            background: sb.errorBg as string,
+            color: sb.errorColor as string,
+          }}
+        >
+          <HugeiconsIcon icon={Cancel01Icon} size={14} />
+          {error}
+        </span>
+      );
+    }
+    if (cookieMode) {
+      const isOk = cookieMode.includes("auto") || cookieMode === "manual-runtime";
+      const isWarn = cookieMode === "manual-incomplete";
+      return (
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+            padding: `${sb.paddingY}px ${sb.paddingX}px`,
+            borderRadius: sb.borderRadius,
+            fontSize: sb.fontSize,
+            fontWeight: 500,
+            background: isOk ? (sb.successBg as string) : isWarn ? (sb.warnBg as string) : (sb.idleBg as string),
+            color: isOk ? (sb.successColor as string) : isWarn ? (sb.warnColor as string) : (sb.idleColor as string),
+          }}
+        >
+          <span
             style={{
-              borderRadius: p.Status.borderRadius as number,
-              padding: `${p.Status.paddingY as number}px ${p.Status.paddingX as number}px`,
-              fontSize: p.Status.fontSize as number,
+              width: 6,
+              height: 6,
+              borderRadius: "50%",
+              background: isOk ? (sb.successColor as string) : isWarn ? (sb.warnColor as string) : (sb.idleColor as string),
+              flexShrink: 0,
             }}
-          >
-            Settings saved
-          </div>
-        )}
+          />
+          {COOKIE_MODE_LABELS[cookieMode] || cookieMode}
+        </span>
+      );
+    }
+    return null;
+  };
 
-        {!showSaved && cookieMode && (
-          <div
-            style={{
-              borderRadius: p.Status.borderRadius as number,
-              padding: `${p.Status.paddingY as number}px ${p.Status.paddingX as number}px`,
-              fontSize: p.Status.fontSize as number,
-            }}
-            className={
-              cookieMode.includes("auto") || cookieMode === "manual-runtime"
-                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-                : cookieMode === "manual-incomplete"
-                  ? "bg-amber-500/10 text-amber-700 dark:text-amber-400"
-                  : "bg-muted text-muted-foreground"
+  const isAuto = config.source === "auto";
+  const isManual = config.source === "manual";
+
+  return (
+    <Drawer open={open} onOpenChange={onOpenChange} position="right">
+      <DrawerPopup variant="inset" className="border-s-0 sm:border-0 rounded-e-none sm:rounded-e-none sm:rounded-s-2xl">
+        <DrawerHeader
+          style={{
+            paddingTop: p.Title.paddingTop,
+            paddingBottom: p.Title.paddingBottom,
+            paddingLeft: p.Title.paddingLeft,
+            paddingRight: p.Title.paddingRight,
+            gap: p.Title.gap,
+            position: "relative",
+          }}
+        >
+          <DrawerTitle style={{ fontSize: p.Title.titleSize }}>Sync Settings</DrawerTitle>
+          <DrawerDescription style={{ fontSize: p.Title.descSize }}>
+            Configure how Kairos connects to X/Twitter to sync your bookmarks.
+          </DrawerDescription>
+          <DrawerClose
+            render={
+              <Button
+                size="icon"
+                variant="ghost"
+                aria-label="Close"
+                style={{
+                  color: p.CloseButton.iconColor as string,
+                  background: p.CloseButton.bg as string,
+                }}
+                className="absolute end-2 top-2"
+                onMouseEnter={(e) => { e.currentTarget.style.background = p.CloseButton.hoverBg as string }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = p.CloseButton.bg as string }}
+              />
             }
           >
-            {COOKIE_MODE_LABELS[cookieMode] || cookieMode}
-          </div>
-        )}
+            <XIcon />
+          </DrawerClose>
+        </DrawerHeader>
 
-        {error && (
+        <DrawerPanel>
           <div
-            className="bg-red-500/10 text-red-700 dark:text-red-400"
             style={{
-              borderRadius: p.Status.borderRadius as number,
-              padding: `${p.Status.paddingY as number}px ${p.Status.paddingX as number}px`,
-              fontSize: p.Status.fontSize as number,
+              display: "flex",
+              flexDirection: "column",
+              gap: p.Section.gap,
+              padding: `${p.Section.panelPaddingY}px ${p.Section.panelPaddingX}px`,
             }}
           >
-            {error}
-          </div>
-        )}
+            {/* Choice: Auto-detect */}
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: p.Section.innerGap,
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setConfig((c) => ({ ...c, source: c.source === "auto" ? null : "auto" }))}
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: sc.gap,
+                  padding: `${sc.paddingY}px ${sc.paddingX}px`,
+                  borderRadius: sc.borderRadius,
+                  border: `1.5px solid ${isAuto ? sc.activeBorder : sc.idleBorder}`,
+                  background: isAuto ? (sc.activeBg as string) : "transparent",
+                  cursor: "pointer",
+                  textAlign: "left",
+                  width: "100%",
+                  transition: "border-color 0.15s ease, background 0.15s ease",
+                  outline: "none",
+                }}
+              >
+                <div
+                  style={{
+                    width: sc.iconSize,
+                    height: sc.iconSize,
+                    borderRadius: sc.iconRadius,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: isAuto ? (sc.iconActiveBg as string) : (sc.iconBg as string),
+                    color: isAuto ? (sc.iconActiveColor as string) : (sc.iconColor as string),
+                    flexShrink: 0,
+                    transition: "background 0.15s ease, color 0.15s ease",
+                  }}
+                >
+                  <HugeiconsIcon icon={BrowserIcon} size={sc.iconInner} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: sc.titleSize, fontWeight: 600, color: "var(--foreground)", lineHeight: 1.3 }}>
+                    Auto-detect from browser
+                  </div>
+                  <div style={{ fontSize: sc.subtitleSize, color: "var(--muted-foreground)", marginTop: 2, lineHeight: 1.4 }}>
+                    Field Theory extracts cookies directly from your browser
+                  </div>
+                </div>
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    flexShrink: 0,
+                    transform: `rotate(${isAuto ? 180 : 0}deg)`,
+                    transition: "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                    color: isAuto ? "var(--foreground)" : "var(--muted-foreground)",
+                    marginTop: 2,
+                  }}
+                >
+                  <HugeiconsIcon icon={ChevronDownIcon} size={18} />
+                </span>
+              </button>
 
-        <div
-          className="flex flex-col-reverse sm:flex-row sm:justify-end"
+              {isAuto && (
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: fc.gap,
+                    padding: `${fc.paddingY}px ${fc.paddingX}px`,
+                    borderRadius: fc.borderRadius,
+                    border: `1px solid ${fc.borderColor}`,
+                    background: fc.bg as string,
+                    marginLeft: p.Section.sectionPaddingX,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: fc.inputGap,
+                    }}
+                  >
+                    <div style={{ fontSize: fc.labelSize, fontWeight: fc.labelWeight, color: fc.labelColor as string }}>
+                      Browser
+                    </div>
+                    <div style={{ position: "relative" }}>
+                      <button
+                        type="button"
+                        onClick={() => setDropdownOpen(!dropdownOpen)}
+                        style={{
+                          height: dd.height,
+                          borderRadius: dd.borderRadius,
+                          paddingLeft: dd.paddingX,
+                          paddingRight: dd.paddingX,
+                          fontSize: dd.fontSize,
+                          width: (dd.width as number) > 0 ? dd.width : "100%",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 8,
+                          cursor: "pointer",
+                          color: "var(--foreground)",
+                          background: dd.bg as string,
+                          border: `1px solid ${dd.borderColor}`,
+                          transition: "border-color 0.15s ease",
+                        }}
+                        className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <span>{BROWSER_OPTIONS.find((b) => b.id === config.browser)?.label}</span>
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            transform: `rotate(${dropdownOpen ? 180 : 0}deg)`,
+                            transition: "transform 0.2s ease",
+                            opacity: 0.5,
+                          }}
+                        >
+                          <HugeiconsIcon icon={ChevronDownIcon} size={dd.checkSize} />
+                        </span>
+                      </button>
+                      {dropdownOpen && (
+                        <>
+                          <div className="fixed inset-0 z-40" onClick={() => setDropdownOpen(false)} />
+                          <div
+                            style={{
+                              position: "absolute",
+                              left: 0,
+                              right: 0,
+                              top: "100%",
+                              marginTop: 4,
+                              zIndex: 50,
+                              borderRadius: dd.borderRadius,
+                              border: `1px solid ${dd.menuBorder}`,
+                              background: dd.menuBg as string,
+                              padding: 4,
+                              boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+                            }}
+                          >
+                            {BROWSER_OPTIONS.map((b) => {
+                              const selected = config.browser === b.id;
+                              return (
+                                <button
+                                  key={b.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setConfig((prev) => ({ ...prev, browser: b.id }));
+                                    setDropdownOpen(false);
+                                  }}
+                                  style={{
+                                    display: "flex",
+                                    width: "100%",
+                                    alignItems: "center",
+                                    gap: dd.itemGap,
+                                    padding: `${dd.itemPaddingY}px ${dd.itemPaddingX}px`,
+                                    borderRadius: (dd.borderRadius as number) - 2,
+                                    fontSize: dd.itemFontSize,
+                                    cursor: "pointer",
+                                    color: "var(--foreground)",
+                                    background: selected ? (dd.itemHoverBg as string) : "transparent",
+                                    border: "none",
+                                    textAlign: "left",
+                                    transition: "background 0.1s ease",
+                                  }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.background = dd.itemHoverBg as string }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.background = selected ? (dd.itemHoverBg as string) : "transparent" }}
+                                >
+                                  <span style={{ width: dd.checkSize, display: "flex", alignItems: "center", flexShrink: 0 }}>
+                                    {selected && (
+                                      <HugeiconsIcon icon={CheckIcon} size={dd.checkSize} strokeWidth={2.5} />
+                                    )}
+                                  </span>
+                                  <span>{b.label}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <p style={{ fontSize: fc.noteSize, color: "var(--muted-foreground)", lineHeight: 1.4, margin: 0 }}>
+                    {BROWSER_OPTIONS.find((b) => b.id === config.browser)?.note}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Choice: Manual */}
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: p.Section.innerGap,
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setConfig((c) => ({ ...c, source: c.source === "manual" ? null : "manual" }))}
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: sc.gap,
+                  padding: `${sc.paddingY}px ${sc.paddingX}px`,
+                  borderRadius: sc.borderRadius,
+                  border: `1.5px solid ${isManual ? sc.activeBorder : sc.idleBorder}`,
+                  background: isManual ? (sc.activeBg as string) : "transparent",
+                  cursor: "pointer",
+                  textAlign: "left",
+                  width: "100%",
+                  transition: "border-color 0.15s ease, background 0.15s ease",
+                  outline: "none",
+                }}
+              >
+                <div
+                  style={{
+                    width: sc.iconSize,
+                    height: sc.iconSize,
+                    borderRadius: sc.iconRadius,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: isManual ? (sc.iconActiveBg as string) : (sc.iconBg as string),
+                    color: isManual ? (sc.iconActiveColor as string) : (sc.iconColor as string),
+                    flexShrink: 0,
+                    transition: "background 0.15s ease, color 0.15s ease",
+                  }}
+                >
+                  <HugeiconsIcon icon={LockIcon} size={sc.iconInner} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: sc.titleSize, fontWeight: 600, color: "var(--foreground)", lineHeight: 1.3 }}>
+                    Manually enter cookies
+                  </div>
+                  <div style={{ fontSize: sc.subtitleSize, color: "var(--muted-foreground)", marginTop: 2, lineHeight: 1.4 }}>
+                    Paste ct0 and auth_token copied from browser DevTools
+                  </div>
+                </div>
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    flexShrink: 0,
+                    transform: `rotate(${isManual ? 180 : 0}deg)`,
+                    transition: "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                    color: isManual ? "var(--foreground)" : "var(--muted-foreground)",
+                    marginTop: 2,
+                  }}
+                >
+                  <HugeiconsIcon icon={ChevronDownIcon} size={18} />
+                </span>
+              </button>
+
+              {isManual && (
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: fc.gap,
+                    padding: `${fc.paddingY}px ${fc.paddingX}px`,
+                    borderRadius: fc.borderRadius,
+                    border: `1px solid ${fc.borderColor}`,
+                    background: fc.bg as string,
+                    marginLeft: p.Section.sectionPaddingX,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: fc.inputGap,
+                    }}
+                  >
+                    <Field>
+                      <FieldLabel style={{ fontSize: fc.labelSize, fontWeight: fc.labelWeight, color: fc.labelColor as string }}>
+                        ct0
+                      </FieldLabel>
+                      <Input
+                        type="password"
+                        placeholder="Paste ct0 cookie value"
+                        value={config.ct0}
+                        onChange={(e) => setConfig((c) => ({ ...c, ct0: e.target.value }))}
+                        style={{
+                          padding: `${fc.inputPaddingY}px ${fc.inputPaddingX}px`,
+                          borderRadius: fc.inputBorderRadius,
+                          fontSize: fc.inputFontSize,
+                        }}
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel style={{ fontSize: fc.labelSize, fontWeight: fc.labelWeight, color: fc.labelColor as string }}>
+                        auth_token
+                      </FieldLabel>
+                      <Input
+                        type="password"
+                        placeholder="Paste auth_token cookie value"
+                        value={config.authToken}
+                        onChange={(e) => setConfig((c) => ({ ...c, authToken: e.target.value }))}
+                        style={{
+                          padding: `${fc.inputPaddingY}px ${fc.inputPaddingX}px`,
+                          borderRadius: fc.inputBorderRadius,
+                          fontSize: fc.inputFontSize,
+                        }}
+                      />
+                    </Field>
+                  </div>
+                  <p style={{ fontSize: fc.noteSize, color: "var(--muted-foreground)", lineHeight: 1.4, margin: 0 }}>
+                    X.com → DevTools → Application → Cookies →{" "}
+                    <code
+                      style={{
+                        borderRadius: 4,
+                        border: "1px solid var(--border)",
+                        background: "var(--background)",
+                        padding: "1px 6px",
+                        fontSize: fc.noteSize,
+                      }}
+                    >
+                      ct0
+                    </code>
+                    {" & "}
+                    <code
+                      style={{
+                        borderRadius: 4,
+                        border: "1px solid var(--border)",
+                        background: "var(--background)",
+                        padding: "1px 6px",
+                        fontSize: fc.noteSize,
+                      }}
+                    >
+                      auth_token
+                    </code>
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Status */}
+            <div style={{ minHeight: 28, display: "flex", alignItems: "center" }}>
+              {statusBadge()}
+            </div>
+          </div>
+        </DrawerPanel>
+
+        <DrawerFooter
+          className="border-t-0"
           style={{
-            gap: p.Footer.footerGap as number,
-            padding: `${p.Card.paddingY as number}px ${p.Card.paddingX as number}px`,
-            margin: `0 calc(${p.Card.paddingX as number}px * -1) calc(${p.Card.paddingY as number}px * -1)`,
-            borderTop: "1px solid var(--border)",
-            background: "var(--muted)",
-            borderBottomLeftRadius: p.Card.borderRadius as number,
-            borderBottomRightRadius: p.Card.borderRadius as number,
+            paddingTop: p.Footer.paddingTop,
+            paddingBottom: p.Footer.paddingBottom,
+            paddingLeft: p.Footer.paddingLeft,
+            paddingRight: p.Footer.paddingRight,
+            gap: p.Footer.gap,
+            background: p.Footer.bg as string,
           }}
         >
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            style={{
-              height: p.Footer.buttonHeight as number,
-              paddingLeft: p.Footer.buttonPaddingX as number,
-              paddingRight: p.Footer.buttonPaddingX as number,
-            }}
+          <DrawerClose
+            render={
+              <Button
+                variant="ghost"
+                style={{
+                  padding: `${p.Footer.buttonPaddingY}px ${p.Footer.buttonPaddingX}px`,
+                  borderRadius: p.Footer.buttonBorderRadius,
+                }}
+              />
+            }
           >
             Cancel
-          </Button>
+          </DrawerClose>
           <Button
             onClick={handleSave}
             disabled={saving}
             style={{
-              height: p.Footer.buttonHeight as number,
-              paddingLeft: p.Footer.buttonPaddingX as number,
-              paddingRight: p.Footer.buttonPaddingX as number,
+              padding: `${p.Footer.buttonPaddingY}px ${p.Footer.buttonPaddingX}px`,
+              borderRadius: p.Footer.buttonBorderRadius,
             }}
           >
-            {saving ? "Saving…" : "Save Settings"}
+            {saving ? "Saving\u2026" : "Save Settings"}
           </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+        </DrawerFooter>
+      </DrawerPopup>
+    </Drawer>
   );
 }

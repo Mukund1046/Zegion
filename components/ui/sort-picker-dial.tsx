@@ -215,7 +215,7 @@ export default function SortPickerDial({
 
   const iconSz = values.Layout.iconSize ?? 18
   const iconStrokeVal = values.Layout.iconStrokeWidth ?? 2.5
-  const iconColor = values.Colors.iconColor ?? '#868593'
+  const iconColor = values.Colors.iconColor ?? 'currentColor'
   const mobilePopover = values.AddPopover
   const mobileColors = values.Colors
   const segBg = isDark ? (mobileColors.segmentBgDark ?? '#262626') : (mobileColors.segmentBg ?? '#F4F4F9')

@@ -10,6 +10,9 @@
 
 :root {
   color-scheme: light;
+  --tracking-normal: -0.01em;
+  --tracking-medium: -0.015em;
+  --tracking-semibold: -0.02em;
   --background: rgba(207, 207, 207, 1);
   --foreground: #000000;
   --foreground: oklch(0 0 0);
@@ -153,6 +156,7 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: "Host Grotesk", "Segoe UI", system-ui, sans-serif;
+  letter-spacing: var(--tracking-normal);
   transition: background 0.32s ease, color 0.32s ease;
 }
 
@@ -276,7 +280,7 @@ select:focus-visible,
 .grid-item-timeline,
 .grid-item-stats,
 .viewport {
-  transition: background 0.24s ease, color 0.24s ease, border-color 0.24s ease, font-size 0.24s ease, padding 0.24s ease, gap 0.24s ease, transform 0.24s ease;
+  transition: background 0.24s ease, color 0.24s ease, border-color 0.24s ease, transform 0.24s ease;
 }
 
 .feed-shell {
@@ -342,28 +346,17 @@ select:focus-visible,
 }
 
 .brand-mark {
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
-  background: var(--foreground);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
 }
 
 .brand-mark img {
-  width: 16px;
-  height: 16px;
-  filter: brightness(0) invert(1);
+  display: block;
 }
 
 body.dark-mode .brand-mark {
-  background: var(--foreground);
-}
-
-body.dark-mode .brand-mark img {
-  filter: none;
 }
 
 .brand-copy {
@@ -895,7 +888,13 @@ body.dark-mode .grid-item {
   display: block;
   pointer-events: none;
   border-radius: 12px;
+  outline: 1px solid oklch(0 0 0 / 0.08);
+  outline-offset: -1px;
   transition: transform 0.24s ease, filter 0.24s ease;
+}
+
+body.dark-mode .grid-item img:not(.play-pill-icon) {
+  outline-color: oklch(1 0 0 / 0.1);
 }
 
 .grid-item:hover:not(.lightbox-active) img {
@@ -1257,6 +1256,10 @@ body.dark-mode .grid-item-text {
 @media (max-width: 720px) {
   body {
     overflow: auto;
+  }
+
+  .sidebar {
+    height: 100dvh;
   }
 
   .app-shell {

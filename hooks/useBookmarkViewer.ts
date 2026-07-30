@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { animate } from "motion";
+import type { AnimationOptions, DOMKeyframesDefinition } from "motion";
 import { iconPath, sortIcons } from "@/lib/icons";
 import {
   DEFAULT_SORT,
   STORAGE_KEY,
-  buildFacetCounts,
   buildMasonryLayout,
   clamp,
   escapeHtml,
@@ -14,9 +14,6 @@ import {
   formatDate,
   formatNavigatorDate,
   formatNavigatorSubline,
-  getBookmarkAuthorsLabel,
-  getBookmarkCategory,
-  getBookmarkMediaKind,
   getFilteredBookmarks,
   getSortLabel,
   getTimelineText,
@@ -25,6 +22,7 @@ import {
   lineClampText,
   twitterImageUrl,
 } from "@/lib/bookmark-utils";
+import { apiFetch } from "@/lib/client-api";
 import type {
   Bookmark,
   BookmarkFolder,
@@ -35,11 +33,6 @@ import type {
   ViewMode,
 } from "@/lib/types";
 import type { LayoutItem } from "@/lib/bookmark-utils";
-
-interface SidebarSection {
-  title: string;
-  items: { type: FacetType; value: string; count: number }[];
-}
 
 const DRAG_THRESHOLD = 5;
 
@@ -159,7 +152,6 @@ export function useBookmarkViewer() {
   const [activeFacetValue, setActiveFacetValue] = useState("All bookmarks");
   const [displayBookmarks, setDisplayBookmarks] = useState<Bookmark[]>([]);
   const [darkMode, setDarkMode] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const [syncStatusText, setSyncStatusText] = useState("Local cache ready");
   const [syncStatusTone, setSyncStatusTone] = useState<
@@ -167,10 +159,6 @@ export function useBookmarkViewer() {
   >("idle");
   const [syncBusy, setSyncBusy] = useState(false);
   const [reindexBusy, setReindexBusy] = useState(false);
-  const [sidebarSections, setSidebarSections] = useState<SidebarSection[]>([]);
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>(
-    {}
-  );
   const [scrubberVisible, setScrubberVisible] = useState(false);
   const [scrubberActive, setScrubberActive] = useState(false);
   const [scrubberMarkers, setScrubberMarkers] = useState<ScrubberMarkerData[]>([]);
@@ -249,12 +237,10 @@ export function useBookmarkViewer() {
         activeSearch,
         activeFacetType,
         activeFacetValue,
-        sidebarOpen,
-        sidebarSections: expandedSections,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch {
-      /* storage unavailable */
+    } catch (e) {
+      console.warn("Failed to persist state to localStorage", e);
     }
   }, [
     activeFacetType,
@@ -264,8 +250,6 @@ export function useBookmarkViewer() {
     activeSort,
     activeView,
     darkMode,
-    expandedSections,
-    sidebarOpen,
   ]);
 
   const getViewportWidth = () => viewportRef.current?.clientWidth || window.innerWidth;
@@ -276,78 +260,6 @@ export function useBookmarkViewer() {
     if (!viewport) return 0;
     return Math.max(0, viewport.scrollHeight - viewport.clientHeight);
   };
-
-  const buildSidebarSections = useCallback(
-    (bookmarks: Bookmark[]): SidebarSection[] => {
-      const folderPairs = buildFacetCounts(
-        bookmarks.filter((bookmark) => (bookmark.folders || []).length > 0),
-        (bookmark) => bookmark.folders[0]
-      );
-      const categoryPairs = buildFacetCounts(
-        bookmarks.filter((item) => item.category && item.category !== "unclassified"),
-        getBookmarkCategory
-      );
-      const linkedDomainPairs = buildFacetCounts(
-        bookmarks.filter((item) => item.linkedDomains && item.linkedDomains.length > 0),
-        (item) => item.linkedDomains[0]
-      );
-      const authorPairs = buildFacetCounts(bookmarks, getBookmarkAuthorsLabel);
-      const mediaPairs = buildFacetCounts(bookmarks, getBookmarkMediaKind);
-
-      return [
-        {
-          title: "Quick Filters",
-          items: [
-            { type: "all", value: "All bookmarks", count: bookmarks.length },
-            ...mediaPairs.map(([value, count]) => ({
-              type: "media" as FacetType,
-              value,
-              count,
-            })),
-          ],
-        },
-        categoryPairs.length > 0
-          ? {
-              title: "Categories",
-              items: categoryPairs.map(([value, count]) => ({
-                type: "category" as FacetType,
-                value,
-                count,
-              })),
-            }
-          : null,
-        folderPairs.length > 0
-          ? {
-              title: "Folders",
-              items: folderPairs.map(([value, count]) => ({
-                type: "folder" as FacetType,
-                value,
-                count,
-              })),
-            }
-          : null,
-        linkedDomainPairs.length > 0
-          ? {
-              title: "Linked Domains",
-              items: linkedDomainPairs.map(([value, count]) => ({
-                type: "linkedDomain" as FacetType,
-                value,
-                count,
-              })),
-            }
-          : null,
-        {
-          title: "Authors",
-          items: authorPairs.map(([value, count]) => ({
-            type: "author" as FacetType,
-            value,
-            count,
-          })),
-        },
-      ].filter(Boolean) as SidebarSection[];
-    },
-    []
-  );
 
   const renderCardContent = useCallback(
     (element: HTMLDivElement, bookmark: Bookmark, item: LayoutItem, view: ViewMode) => {
@@ -746,17 +658,18 @@ export function useBookmarkViewer() {
         return;
       }
 
-      animate(
-        preview,
-        {
-          opacity: [1, 0],
-          transform: [
-            "translate3d(0, -50%, 0) scale(1)",
-            "translate3d(6px, -50%, 0) scale(0.988)",
-          ],
-        } as any,
-        { duration: 0.18, ease: [0.22, 1, 0.36, 1] } as any
-      ).then(() => {
+      const hideKeyframes = {
+        opacity: [1, 0] as const,
+        transform: [
+          "translate3d(0, -50%, 0) scale(1)",
+          "translate3d(6px, -50%, 0) scale(0.988)",
+        ] as const,
+      } satisfies DOMKeyframesDefinition;
+      const hideOptions = {
+        duration: 0.18,
+        ease: [0.22, 1, 0.36, 1] as const,
+      } satisfies AnimationOptions;
+      animate(preview, hideKeyframes, hideOptions).then(() => {
         preview.setAttribute("aria-hidden", "true");
         setScrubberPreviewVisible(false);
       });
@@ -791,17 +704,18 @@ export function useBookmarkViewer() {
 
       if (wasSameMarker) return;
 
-      animate(
-        preview,
-        {
-          opacity: [0, 1],
-          transform: [
-            "translate3d(6px, -50%, 0) scale(0.988)",
-            "translate3d(0, -50%, 0) scale(1)",
-          ],
-        } as any,
-        { duration: 0.2, ease: [0.22, 1, 0.36, 1] } as any
-      );
+      const showKeyframes = {
+        opacity: [0, 1] as const,
+        transform: [
+          "translate3d(6px, -50%, 0) scale(0.988)",
+          "translate3d(0, -50%, 0) scale(1)",
+        ] as const,
+      } satisfies DOMKeyframesDefinition;
+      const showOptions = {
+        duration: 0.2,
+        ease: [0.22, 1, 0.36, 1] as const,
+      } satisfies AnimationOptions;
+      animate(preview, showKeyframes, showOptions);
     },
     [updateScrubberMarkerStyles]
   );
@@ -1050,6 +964,11 @@ export function useBookmarkViewer() {
 
       element.style.visibility = "hidden";
 
+      if (engine.lightboxClone && engine.lightboxClone.parentNode) {
+        engine.lightboxClone.remove();
+        engine.lightboxClone = null;
+      }
+
       const clone = element.cloneNode(true) as HTMLDivElement;
       clone.querySelectorAll<HTMLElement>("*").forEach((child) => {
         child.style.transition = "none";
@@ -1279,13 +1198,12 @@ export function useBookmarkViewer() {
   }, [rebuildFeedForCurrentViewport]);
 
   const reloadBookmarks = useCallback(async () => {
-    const response = await fetch(`/api/bookmarks?ts=${Date.now()}`);
+    const response = await apiFetch(`/api/bookmarks?ts=${Date.now()}`);
     const data = await response.json();
     const nextBookmarks: Bookmark[] = Array.isArray(data) ? data : data.bookmarks || [];
     const nextFolders: BookmarkFolder[] = Array.isArray(data) ? [] : data.folders || [];
     setAllBookmarks(nextBookmarks);
     setFolders(nextFolders);
-    setSidebarSections(buildSidebarSections(nextBookmarks));
     refreshDisplay(
       nextBookmarks,
       activeFolder,
@@ -1302,13 +1220,12 @@ export function useBookmarkViewer() {
     activeSearch,
     activeSort,
     activeView,
-    buildSidebarSections,
     refreshDisplay,
   ]);
 
   const loadServerStatus = useCallback(async () => {
     try {
-      const response = await fetch("/api/status");
+      const response = await apiFetch("/api/status");
       if (!response.ok) return;
       const payload = await response.json();
       if (typeof payload.bookmarkCount === "number") {
@@ -1321,8 +1238,8 @@ export function useBookmarkViewer() {
         );
         setSyncStatusTone(payload.running ? "working" : "idle");
       }
-    } catch {
-      /* API unavailable */
+    } catch (e) {
+      console.warn("Failed to poll sync status", e);
     }
   }, []);
 
@@ -1334,7 +1251,7 @@ export function useBookmarkViewer() {
       else setReindexBusy(true);
 
       try {
-        const response = await fetch(endpoint, { method: "POST" });
+        const response = await apiFetch(endpoint, { method: "POST" });
         const payload = await response.json();
         if (!response.ok) {
           throw new Error(payload.error || "Action failed");
@@ -1471,12 +1388,14 @@ export function useBookmarkViewer() {
           if (restored.activeSearch) setActiveSearch(restored.activeSearch);
           if (restored.activeFacetType) setActiveFacetType(restored.activeFacetType);
           if (restored.activeFacetValue) setActiveFacetValue(restored.activeFacetValue);
-          if (restored.sidebarOpen) setSidebarOpen(true);
-          if (restored.sidebarSections) setExpandedSections(restored.sidebarSections);
-          if (restored.feedScrollY) engineRef.current.feedScrollY = restored.feedScrollY;
+          engineRef.current.feedScrollY = 0;
+          if (restored.feedScrollY) {
+            delete restored.feedScrollY;
+            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(restored)); } catch {}
+          }
         }
 
-        const response = await fetch("/api/bookmarks");
+        const response = await apiFetch("/api/bookmarks");
         const data = await response.json();
         if (cancelled) return;
 
@@ -1484,7 +1403,6 @@ export function useBookmarkViewer() {
         const nextFolders: BookmarkFolder[] = Array.isArray(data) ? [] : data.folders || [];
         setAllBookmarks(nextBookmarks);
         setFolders(nextFolders);
-        setSidebarSections(buildSidebarSections(nextBookmarks));
 
         const engine = engineRef.current;
         const viewportWidth = getViewportWidth();
@@ -1554,7 +1472,7 @@ export function useBookmarkViewer() {
     return () => {
       cancelled = true;
     };
-  }, [buildSidebarSections, createPool, loadServerStatus, resetViewportAndRebuild]);
+  }, [createPool, loadServerStatus, resetViewportAndRebuild]);
 
   // Multi-browser sync via BroadcastChannel
   useEffect(() => {
@@ -1590,12 +1508,6 @@ export function useBookmarkViewer() {
       if (syncFeedScrollRaf === null) {
         syncFeedScrollRaf = requestAnimationFrame(() => {
           syncFeedScrollRaf = null;
-          try {
-            const raw = localStorage.getItem(STORAGE_KEY);
-            const state = raw ? JSON.parse(raw) : {};
-            state.feedScrollY = engine.feedScrollY;
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-          } catch { /* storage unavailable */ }
         });
       }
     };
@@ -1886,7 +1798,7 @@ export function useBookmarkViewer() {
       resizeObserver.disconnect();
       window.removeEventListener("resize", updateScrubberFrame);
     };
-  }, [activeView, loaded, sidebarOpen]);
+  }, [activeView, loaded]);
 
   const folderOptions = ["All", ...folders.map((folder) => folder.name)];
   const categoryCounts = new Map<string, number>();
@@ -1894,10 +1806,6 @@ export function useBookmarkViewer() {
     const cat = b.category || "unclassified";
     categoryCounts.set(cat, (categoryCounts.get(cat) || 0) + 1);
   }
-  const categoryOptions = ["All", ...[...categoryCounts.entries()]
-    .filter(([name]) => name !== "unclassified")
-    .sort((a, b) => b[1] - a[1])
-    .map(([name]) => name)];
   const resultsNoun = displayBookmarks.length === 1 ? "bookmark" : "bookmarks";
   const folderLabel = activeFolder === "All" ? "All folders" : activeFolder;
   const facetLabel =
@@ -1905,13 +1813,6 @@ export function useBookmarkViewer() {
   const searchLabel = activeSearch.trim()
     ? `Matching "${activeSearch.trim()}"`
     : "Showing all items";
-
-  const toggleSection = (title: string) => {
-    setExpandedSections((previous) => ({
-      ...previous,
-      [title]: !(previous[title] ?? title === "Quick Filters"),
-    }));
-  };
 
   const scrollToScrubberProgress = (progress: number, behavior: ScrollBehavior = "auto") => {
     const engine = engineRef.current;
@@ -1980,13 +1881,10 @@ export function useBookmarkViewer() {
       activeFacetType,
       activeFacetValue,
       darkMode,
-      sidebarOpen,
       syncStatusText,
       syncStatusTone,
       syncBusy,
       reindexBusy,
-      sidebarSections,
-      expandedSections,
       scrubberVisible,
       scrubberActive,
       scrubberMarkers,
@@ -2007,7 +1905,6 @@ export function useBookmarkViewer() {
       feedMode,
       loaded,
       folderOptions,
-      categoryOptions,
       resultsNoun,
       facetLabel,
       searchLabel,
@@ -2043,11 +1940,9 @@ export function useBookmarkViewer() {
         document.body.classList.add("theme-transition");
         setTimeout(() => document.body.classList.remove("theme-transition"), 400);
       },
-      setSidebarOpen,
       applyFilter,
       applyView,
       applyFacet,
-      toggleSection,
       closeLightbox,
       runServerAction,
       jumpToScrubberMarker,

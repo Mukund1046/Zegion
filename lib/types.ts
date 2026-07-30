@@ -54,6 +54,11 @@ export type FacetType =
   | "author"
   | "media";
 
+export interface FilterClause {
+  type: FacetType;
+  value: string;
+}
+
 export interface PersistedState {
   darkMode?: boolean;
   activeFolder?: string;
@@ -62,8 +67,6 @@ export interface PersistedState {
   activeSearch?: string;
   activeFacetType?: FacetType;
   activeFacetValue?: string;
-  sidebarOpen?: boolean;
-  sidebarSections?: Record<string, boolean>;
   feedScrollY?: number;
 }
 

@@ -2,7 +2,6 @@ import { spawn } from "child_process";
 import fs from "fs";
 import path from "path";
 import {
-  getRequiredEnv,
   getJsonlPath,
   getBookmarksOutputPath,
   getRepoRoot,
@@ -78,11 +77,17 @@ export function readStatusSnapshot() {
   };
 }
 
-function runNodeScript(args: string[], timeoutMs = 300000): Promise<{ stdout: string; stderr: string }> {
+function runNodeScript(args: string[], cookieOverrides?: { cookies?: string; authToken?: string }, timeoutMs = 300000): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
+    const childEnv: Record<string, string | undefined> = {
+      ...process.env,
+    };
+    if (cookieOverrides?.cookies) childEnv.X_CT0 = cookieOverrides.cookies;
+    if (cookieOverrides?.authToken) childEnv.X_AUTH_TOKEN = cookieOverrides.authToken;
+
     const child = spawn(process.execPath, args, {
       cwd: APP_ROOT,
-      env: process.env,
+      env: childEnv as NodeJS.ProcessEnv,
       stdio: ["ignore", "pipe", "pipe"],
     });
 
@@ -172,31 +177,31 @@ export async function syncBookmarks() {
     } else if (config.source === "manual" && config.ct0 && config.authToken) {
       ftArgs = [
         FT_CLI, "sync",
-        "--cookies", config.ct0, config.authToken,
         "--max-minutes", "30",
         "--yes", "--no-media",
       ];
     } else {
-      const ct0 = getRequiredEnv("X_CT0");
-      const authToken = getRequiredEnv("X_AUTH_TOKEN");
       ftArgs = [
         FT_CLI, "sync",
-        "--cookies", ct0, authToken,
         "--max-minutes", "30",
         "--yes", "--no-media",
       ];
     }
 
-    await runNodeScript(ftArgs);
+    const cookieOverride = config.ct0
+      ? { cookies: config.ct0, authToken: config.authToken || "" }
+      : undefined;
+
+    await runNodeScript(ftArgs, cookieOverride);
 
     let folderSyncWarning: string | null = null;
     try {
-      await runNodeScript([FOLDER_SYNC_SCRIPT]);
+      await runNodeScript([FOLDER_SYNC_SCRIPT], cookieOverride);
     } catch (error) {
       folderSyncWarning = error instanceof Error ? error.message : "Folder sync failed";
     }
 
-    await runNodeScript([EXPORT_SCRIPT]);
+    await runNodeScript([EXPORT_SCRIPT], cookieOverride);
 
     return {
       ok: true,
@@ -208,8 +213,7 @@ export async function syncBookmarks() {
 
 export async function reindexBookmarks() {
   return withJobLock("reindex", async () => {
-    await runNodeScript([FT_CLI, "index", "--force"]);
-    await runNodeScript([FT_CLI, "classify", "--regex"]);
+    await runNodeScript([FT_CLI, "index"]);
     await runNodeScript([EXPORT_SCRIPT]);
 
     return {

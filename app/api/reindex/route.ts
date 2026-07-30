@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { reindexBookmarks } from "@/lib/server-jobs";
+import { requireLocalOrApiKey } from "@/lib/api-auth";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-export async function POST() {
+export async function POST(request: Request) {
+  const auth = requireLocalOrApiKey(request);
+  if (auth) return auth;
+
   try {
     const payload = await reindexBookmarks();
     return NextResponse.json(payload);

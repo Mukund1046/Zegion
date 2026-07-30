@@ -1,7 +1,7 @@
 import { DialRoot } from "dialkit";
 import "dialkit/styles.css";
 import type { Metadata } from "next";
-import { Host_Grotesk } from "next/font/google";
+import { Host_Grotesk, Faculty_Glyphic } from "next/font/google";
 import "./globals.css";
 
 const hostGrotesk = Host_Grotesk({
@@ -10,8 +10,14 @@ const hostGrotesk = Host_Grotesk({
   variable: "--font-host-grotesk",
 });
 
+const facultyGlyphic = Faculty_Glyphic({
+  subsets: ["latin"],
+  weight: ["400"],
+  variable: "--font-faculty-glyphic",
+});
+
 export const metadata: Metadata = {
-  title: "Kairos — Bookmarks",
+  title: "Zegion — Bookmarks",
   description: "Local-first X bookmarks browser",
 };
 
@@ -22,7 +28,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={hostGrotesk.className}>
+      <body className={`${hostGrotesk.className} ${facultyGlyphic.variable}`}>
         <DialRoot defaultOpen />
         {children}
       </body>

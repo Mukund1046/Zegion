@@ -475,7 +475,7 @@ function SortPicker({
   }
 
   const segBg = isDark ? (c?.segmentBgDark ?? '#262626') : (c?.segmentBg ?? '#F4F4F9')
-  const iconColor = c?.iconColor ?? '#868593'
+  const iconColor = c?.iconColor ?? 'currentColor'
   const dashStroke = isDark ? (c?.dashColorDark ?? '#262626') : (c?.dashColor ?? '#F4F4F9')
   const borderColor = c?.borderColor ?? 'transparent'
   const disabledOp = i?.disabledOpacity ?? 0.5
@@ -533,7 +533,7 @@ function SortPicker({
               >
                 <div className="flex flex-col gap-1" style={{ maxHeight: '320px' }}>
                   <div
-                    className="flex-shrink-0 font-medium text-[#868593] tracking-wider"
+                    className="flex-shrink-0 font-medium text-muted-foreground/60 tracking-wider"
                     style={{ padding: `${fieldPopoverTitlePaddingTop}px ${fieldPopoverTitlePaddingX}px ${fieldPopoverTitlePaddingBottom}px`, fontSize: fieldPopoverTitleFontSize, textTransform: fieldPopoverTitleTransform }}
                   >
                     Select field
@@ -566,7 +566,7 @@ function SortPicker({
                               color: isCurrent
                                 ? (isDark ? '#FFFFFF' : '#000000')
                                 : otherIndex !== -1
-                                  ? (isDark ? '#888888' : '#868593')
+                                  ? (isDark ? '#888888' : 'currentColor')
                                   : (isDark ? '#FFFFFF' : '#000000'),
                             }}
                           >
@@ -578,7 +578,7 @@ function SortPicker({
                       })}
                       {localRules.length > 1 && (
                         <>
-                          <div className="border-t border-[#868593]/20 mx-3" />
+                          <div className="border-t border-border mx-3" />
                           <div
                             role="button"
                             tabIndex={0}
@@ -655,7 +655,7 @@ function SortPicker({
                 backgroundColor: segBg,
                 cursor: isEditing ? 'pointer' : 'default',
               }}
-              className="flex shrink-0 h-12 w-8 items-center justify-center border-0 bg-transparent text-[#868593] outline-none disabled:opacity-40"
+              className="flex shrink-0 h-12 w-8 items-center justify-center border-0 bg-transparent text-muted-foreground/60 outline-none disabled:opacity-40"
             >
               <HugeiconsIcon icon={PlusSignIcon} size={iconSz} color="currentColor" strokeWidth={iconStrokeVal} />
             </button>
@@ -673,7 +673,7 @@ function SortPicker({
         >
             <div className="flex flex-col gap-1">
               <div
-                className="font-medium text-[#868593] tracking-wider"
+                className="font-medium text-muted-foreground/60 tracking-wider"
                 style={{ padding: `${addPopoverTitlePaddingTop}px ${addPopoverTitlePaddingX}px ${addPopoverTitlePaddingBottom}px`, fontSize: addPopoverTitleFontSize, textTransform: addPopoverTitleTransform }}
               >
                 Add sort
@@ -703,7 +703,7 @@ function SortPicker({
                     >
                       <span>{f.label}</span>
                       {isUsed && (
-                        <span className="ml-auto text-[11px] text-[#868593]">Added</span>
+                        <span className="ml-auto text-[11px] text-muted-foreground/60">Added</span>
                       )}
                     </button>
                   )
@@ -730,7 +730,7 @@ function SortPicker({
               ...(toggleW != null ? { width: toggleW } : {}),
               backgroundColor: segBg,
             }}
-            className="flex shrink-0 h-12 w-12 items-center justify-center bg-[#F4F4F9] transition-transform active:scale-90 disabled:active:scale-100 dark:bg-[#262626]"
+            className="flex shrink-0 h-12 w-12 items-center justify-center bg-muted transition-transform active:scale-[0.96] disabled:active:scale-100"
           >
             <div className="relative" style={{ width: iconSz, height: iconSz }}>
               <m.div

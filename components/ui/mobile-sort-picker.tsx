@@ -78,7 +78,7 @@ export default function MobileSortPicker({ value, onChange, onClose, dial, rowGa
   const fp = dial?.FieldPopover
   const segBg = isDark ? (c?.segmentBgDark ?? '#262626') : (c?.segmentBg ?? '#F4F4F9')
   const textColor = isDark ? (c?.textColorDark ?? '#FFFFFF') : (c?.textColor ?? '#000000')
-  const iconCol = c?.iconColor ?? '#868593'
+  const iconCol = c?.iconColor ?? 'currentColor'
   const fontSize = t?.fontSize
   const fontWeight = t?.fontWeight
   const hoverRad = fp?.hoverBorderRadius ?? 12

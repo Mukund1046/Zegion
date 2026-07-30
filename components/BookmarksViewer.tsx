@@ -21,6 +21,7 @@ import {
 import { useDialKit } from "dialkit";
 import { Badge } from "@/components/reui/badge";
 import SyncSettingsDialog from "@/components/ui/sync-settings-dialog";
+import { apiFetch } from "@/lib/client-api";
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { useMediaQuery } from "@/hooks/use-media-query";
@@ -71,7 +72,7 @@ function ToolbarRegion({
 
   useEffect(() => {
     if (!syncSettingsOpen) {
-      fetch("/api/cookies")
+      apiFetch("/api/cookies")
         .then((r) => r.ok ? r.json() : null)
         .then((d) => {
           if (!d) return;
@@ -111,11 +112,18 @@ function ToolbarRegion({
           <div className="toolbar-left">
             <div className="brand">
               <div className="brand-mark" aria-hidden="true">
-                <Image src={helpers.iconPath("bookmark-02")} alt="" width={16} height={16} unoptimized />
+                <Image
+                  src={state.darkMode ? "/Zegion_white.svg" : "/Zegion_Dark.svg"}
+                  alt=""
+                  width={36}
+                  height={28}
+                  unoptimized
+                  style={{ display: "block" }}
+                />
               </div>
               <div className="brand-copy">
                 <span className="brand-title-row">
-                  <span className="brand-title">Kairos</span>
+                  <span className="brand-title" style={{ fontFamily: "var(--font-faculty-glyphic)" }}>Zegion</span>
                   <span className="brand-count">{state.allBookmarks.length}</span>
                 </span>
               </div>
@@ -133,7 +141,7 @@ function ToolbarRegion({
                 className="action-pill"
                 type="button"
                 whileHover={{ scale: 1.03, y: -1 }}
-                whileTap={{ scale: 0.97 }}
+                whileTap={{ scale: 0.96 }}
                 transition={{ type: "spring", stiffness: 300, damping: 30, mass: 0.5 }}
                 onClick={() => onSearchOpenChange(true)}
                 style={{
@@ -235,7 +243,7 @@ function ToolbarRegion({
                   className="action-pill"
                   type="button"
                   whileHover={{ scale: 1.03, y: -1 }}
-                  whileTap={{ scale: 0.97 }}
+                  whileTap={{ scale: 0.96 }}
                   transition={{ type: "spring", stiffness: 300, damping: 30, mass: 0.5 }}
                 >
                   <HugeiconsIcon icon={EllipsisIcon} size={16} className="opacity-50" />
@@ -259,16 +267,18 @@ function ToolbarRegion({
                     }}
                   >
                     {state.syncStatusTone === "working" ? (
-                      <ShineText
-                        duration={2}
-                        repeatDelay={0.4}
-                        baseColor="var(--color-muted-foreground)"
-                        shineColor="var(--color-foreground)"
-                      >
-                        {state.syncStatusText}
-                      </ShineText>
+                      <span className="truncate min-w-0">
+                        <ShineText
+                          duration={2}
+                          repeatDelay={0.4}
+                          baseColor="var(--color-muted-foreground)"
+                          shineColor="var(--color-foreground)"
+                        >
+                          {state.syncStatusText}
+                        </ShineText>
+                      </span>
                     ) : (
-                      <>{state.syncStatusText}{cookieLabel ? <span className="ml-1 opacity-60">{cookieLabel}</span> : null}</>
+                      <span className="truncate min-w-0">{state.syncStatusText}{cookieLabel ? <span className="ml-1 shrink-0 opacity-60">{cookieLabel}</span> : null}</span>
                     )}
                   </div>
                   <button
@@ -433,67 +443,9 @@ function ToolbarRegion({
                     />
                     Dark mode
                   </button>
-                  <div className="border-t my-1 mx-2" style={{ borderColor: state.darkMode ? moreParams.dividerColorDark as string : moreParams.dividerColor as string }} />
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-2 font-medium transition-colors"
-                    style={{
-                      padding: `${moreParams.hoverPaddingY as number}px ${moreParams.hoverPaddingX as number}px`,
-                      borderRadius: moreParams.hoverBorderRadius as number,
-                      background: "transparent",
-                      fontSize: moreParams.popoverFontSize as number,
-                      color: "var(--foreground)",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = state.darkMode
-                        ? (moreParams.hoverColorDark as string)
-                        : (moreParams.hoverColor as string)
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = "transparent"
-                    }}
-                    onClick={() => actions.setSidebarOpen(!state.sidebarOpen)}
-                  >
-                    <Image
-                      className="ui-icon"
-                      src={helpers.iconPath("filter-vertical")}
-                      alt=""
-                      aria-hidden="true"
-                      width={moreParams.popoverIconSize as number}
-                      height={moreParams.popoverIconSize as number}
-                      unoptimized
-                    />
-                    {state.sidebarOpen ? "Hide filters" : "Show filters"}
-                  </button>
                 </div>
               </PopoverContent>
             </Popover>
-          </div>
-        </div>
-
-        <div className="category-bar">
-          <div className="folder-tabs" role="tablist" aria-label="Categories">
-            {state.categoryOptions.map((name) => (
-              <SquircleClip asChild cornerRadius={8} cornerSmoothing={1} key={name}>
-                <button
-                  type="button"
-                  className="folder-tab"
-                  role="tab"
-                  aria-selected={
-                    name === "All"
-                      ? state.activeFacetType === "all"
-                      : state.activeFacetType === "category" && state.activeFacetValue === name
-                  }
-                  onClick={() =>
-                    name === "All"
-                      ? actions.applyFacet("all" as FacetType, "All bookmarks")
-                      : actions.applyFacet("category" as FacetType, name)
-                  }
-                >
-                  {name === "All" ? name : name.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).replace(/\bAi\b/g, 'AI')}
-                </button>
-              </SquircleClip>
-            ))}
           </div>
         </div>
       </div>
@@ -502,7 +454,7 @@ function ToolbarRegion({
         onOpenChange={setSyncSettingsOpen}
         onSaved={() => {
           setCookieLabel("");
-          fetch("/api/cookies")
+          apiFetch("/api/cookies")
             .then((r) => r.ok ? r.json() : null)
             .then((d) => {
               if (!d) return;
@@ -519,114 +471,6 @@ function ToolbarRegion({
         }}
       />
     </div>
-  );
-}
-
-function SidebarRegion({
-  state,
-  actions,
-  helpers,
-}: {
-  state: ReturnType<typeof useBookmarkViewer>["state"];
-  actions: ReturnType<typeof useBookmarkViewer>["actions"];
-  helpers: ReturnType<typeof useBookmarkViewer>["helpers"];
-}) {
-  return (
-    <>
-      <button
-        className={`sidebar-backdrop${state.sidebarOpen ? " open" : ""}`}
-        aria-label="Close sidebar"
-        type="button"
-        onClick={() => actions.setSidebarOpen(false)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            actions.setSidebarOpen(false)
-          }
-        }}
-      ></button>
-      <aside
-        className={`sidebar${state.sidebarOpen ? " open" : ""}`}
-        aria-label="Bookmark classification filters"
-      >
-        <div className="sidebar-header">
-          <div className="sidebar-header-left">
-            <span className="sidebar-title">Browse</span>
-            <span className="sidebar-subtitle">Folders, domains, authors, media</span>
-          </div>
-          <SquircleClip asChild cornerRadius={10} cornerSmoothing={1}>
-            <button
-              className="sidebar-close"
-              type="button"
-              aria-label="Close filters"
-              onClick={() => actions.setSidebarOpen(false)}
-            >
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-              >
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
-          </SquircleClip>
-        </div>
-        <div className="sidebar-filters">
-          {state.sidebarSections.map((section, sectionIndex) => {
-            const expanded =
-              state.expandedSections[section.title] ?? sectionIndex === 0;
-            return (
-              <section key={section.title} className="sidebar-section" data-section={section.title}>
-                <SquircleClip asChild cornerRadius={9} cornerSmoothing={1}>
-                  <button
-                    type="button"
-                    className="sidebar-section-toggle"
-                    aria-expanded={expanded}
-                    onClick={() => actions.toggleSection(section.title)}
-                  >
-                  <h3 className="sidebar-section-title">{section.title}</h3>
-                  <Image
-                    className="ui-icon sidebar-section-chevron"
-                    src={helpers.iconPath("arrow-down-01")}
-                    alt=""
-                    width={16} height={16} unoptimized
-                  />
-                </button>
-                </SquircleClip>
-                <div
-                  className={`sidebar-chip-list${expanded ? "" : " collapsed"}`}
-                  style={{ display: expanded ? "flex" : "none" }}
-                >
-                  {section.items.map((item) => {
-                    const active =
-                      item.type === state.activeFacetType &&
-                      item.value === state.activeFacetValue;
-                    return (
-                      <SquircleClip asChild cornerRadius={8} cornerSmoothing={1} key={`${item.type}-${item.value}`}>
-                        <button
-                          type="button"
-                          className={`sidebar-filter-btn${active ? " active" : ""}`}
-                          onClick={() =>
-                            actions.applyFacet(item.type as FacetType, item.value)
-                          }
-                        >
-                          <span className="sidebar-filter-label">{item.value}</span>
-                          <span className="sidebar-filter-count">{item.count}</span>
-                        </button>
-                      </SquircleClip>
-                    );
-                  })}
-              </div>
-              </section>
-            );
-          })}
-        </div>
-      </aside>
-    </>
   );
 }
 
@@ -817,18 +661,28 @@ function SearchCommand({
   actions: ReturnType<typeof useBookmarkViewer>["actions"];
 }) {
   const [query, setQuery] = useState("");
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const appliedRef = useRef(false);
 
   useEffect(() => {
     if (open) {
       setQuery("");
-      setShowAdvanced(false);
+      appliedRef.current = false;
     }
   }, [open]);
 
+  const handleOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      if (!nextOpen && !appliedRef.current && state.activeSearch) {
+        actions.clearSearch();
+      }
+      onOpenChange(nextOpen);
+    },
+    [state.activeSearch, actions, onOpenChange],
+  );
+
   const cmdParams = useDialKit("Search Command", {
     width: [560, 320, 800, 20],
-    maxHeight: [400, 200, 800, 20],
+    maxHeight: [460, 200, 800, 20],
     borderRadius: [15, 0, 32, 1],
     strokeColor: { type: "color", default: "var(--border)" },
     bgColor: { type: "color", default: "var(--popover)" },
@@ -844,50 +698,108 @@ function SearchCommand({
     hoverPaddingX: [4, 0, 16, 1],
     hoverPaddingY: [0, 0, 12, 1],
     maxResults: [50, 5, 200, 5],
-    showStats: { type: "boolean", default: true },
-    statsPadTop: [4, 0, 24, 1],
-    statsPadRight: [12, 0, 32, 1],
-    statsPadBottom: [8, 0, 24, 1],
-    statsPadLeft: [12, 0, 32, 1],
-    advText: { type: "color", default: "#121212" },
-    advTextDark: { type: "color", default: "#6c6c6c" },
-    advTextActive: { type: "color", default: "#f3f3f3" },
-    advTextActiveDark: { type: "color", default: "#ededed" },
-    advBg: { type: "color", default: "#f4f4fa" },
-    advBgDark: { type: "color", default: "#222222" },
-    advBgActive: { type: "color", default: "#2f2f2f" },
-    advBgActiveDark: { type: "color", default: "#121212" },
-    advBR: [8, 0, 20, 1],
-    advPX: [8, 0, 24, 1],
-    advPY: [4, 0, 16, 1],
+    badgeFontSize: [11, 9, 16, 1],
+    prefixBadgeBg: { type: "color", default: "#e8e8ed" },
+    prefixBadgeBgDark: { type: "color", default: "#2a2a2a" },
   });
 
-  const handleSearch = useCallback(() => {
-    actions.setActiveSearch(query, true);
-    onOpenChange(false);
-  }, [query, actions, onOpenChange]);
+  const prefix = useMemo(() => {
+    if (query.startsWith("@")) return "author" as const;
+    if (query.startsWith("#")) return "category" as const;
+    if (query.startsWith("domain:") || query.startsWith("!domain:")) return "domain" as const;
+    return null;
+  }, [query]);
 
-  const results = useMemo(() => {
-    const max = cmdParams.maxResults as number;
-    if (!query.trim()) return state.allBookmarks.slice(0, max);
-    const q = query.toLowerCase();
-    return state.allBookmarks
+  const prefixQuery = useMemo(() => {
+    if (query.startsWith("@")) return query.slice(1).toLowerCase();
+    if (query.startsWith("#")) return query.slice(1).toLowerCase();
+    if (query.startsWith("!domain:")) return query.slice(8).toLowerCase();
+    if (query.startsWith("domain:")) return query.slice(7).toLowerCase();
+    return "";
+  }, [query]);
+
+  const authors = useMemo(() => {
+    const map = new Map<string, { name: string; handle: string; count: number }>();
+    for (const b of state.allBookmarks) {
+      const key = b.authorHandle.toLowerCase();
+      if (!map.has(key)) map.set(key, { name: b.authorName, handle: b.authorHandle, count: 0 });
+      map.get(key)!.count++;
+    }
+    return [...map.values()].sort((a, b) => b.count - a.count);
+  }, [state.allBookmarks]);
+
+  const categories = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const b of state.allBookmarks) {
+      const cat = b.category || "unclassified";
+      map.set(cat, (map.get(cat) || 0) + 1);
+    }
+    return [...map.entries()]
+      .filter(([name]) => name !== "unclassified")
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, count]) => ({ name, count }));
+  }, [state.allBookmarks]);
+
+  const domains = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const b of state.allBookmarks) {
+      try {
+        const domain = new URL(b.url).hostname.replace(/^www\./, "");
+        map.set(domain, (map.get(domain) || 0) + 1);
+      } catch {}
+    }
+    return [...map.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, count]) => ({ name, count }));
+  }, [state.allBookmarks]);
+
+  const filteredAuthors = useMemo(() => {
+    if (!prefixQuery) return authors.slice(0, cmdParams.maxResults as number);
+    return authors
       .filter(
-        (b) =>
-          b.text.toLowerCase().includes(q) ||
-          b.authorName.toLowerCase().includes(q) ||
-          b.authorHandle.toLowerCase().includes(q),
+        (a) =>
+          a.handle.toLowerCase().includes(prefixQuery) ||
+          a.name.toLowerCase().includes(prefixQuery),
       )
-      .slice(0, max);
-  }, [query, state.allBookmarks, cmdParams.maxResults]);
+      .slice(0, cmdParams.maxResults as number);
+  }, [authors, prefixQuery, cmdParams.maxResults]);
 
-  const handleSelect = useCallback(
-    (bookmark: Bookmark) => {
-      actions.setActiveSearch(query);
+  const filteredCategories = useMemo(() => {
+    if (!prefixQuery) return categories.slice(0, cmdParams.maxResults as number);
+    return categories
+      .filter((c) => c.name.toLowerCase().includes(prefixQuery))
+      .slice(0, cmdParams.maxResults as number);
+  }, [categories, prefixQuery, cmdParams.maxResults]);
+
+  const filteredDomains = useMemo(() => {
+    if (!prefixQuery) return domains.slice(0, cmdParams.maxResults as number);
+    return domains
+      .filter((d) => d.name.toLowerCase().includes(prefixQuery))
+      .slice(0, cmdParams.maxResults as number);
+  }, [domains, prefixQuery, cmdParams.maxResults]);
+
+  const handleApplyFacet = useCallback(
+    (type: FacetType, value: string) => {
+      appliedRef.current = true;
+      actions.applyFacet(type, value);
       onOpenChange(false);
     },
-    [query, actions, onOpenChange],
+    [actions, onOpenChange],
   );
+
+  const handleEnter = useCallback(() => {
+    appliedRef.current = true;
+    if (prefix === "author" && filteredAuthors.length > 0) {
+      handleApplyFacet("author", filteredAuthors[0].name);
+    } else if (prefix === "category" && filteredCategories.length > 0) {
+      handleApplyFacet("category", filteredCategories[0].name);
+    } else if (prefix === "domain" && filteredDomains.length > 0) {
+      handleApplyFacet("domain", filteredDomains[0].name);
+    } else {
+      actions.setActiveSearch(query, true);
+      onOpenChange(false);
+    }
+  }, [prefix, filteredAuthors, filteredCategories, filteredDomains, query, actions, onOpenChange, handleApplyFacet]);
 
   const w = cmdParams.width as number;
   const mh = cmdParams.maxHeight as number;
@@ -902,14 +814,7 @@ function SearchCommand({
   const ipY2 = cmdParams.itemPaddingY as number;
   const hpX = cmdParams.hoverPaddingX as number;
   const hpY = cmdParams.hoverPaddingY as number;
-  const showSt = cmdParams.showStats as unknown as boolean;
-  const stPT = cmdParams.statsPadTop as number;
-  const stPR = cmdParams.statsPadRight as number;
-  const stPB = cmdParams.statsPadBottom as number;
-  const stPL = cmdParams.statsPadLeft as number;
-  const advBR = cmdParams.advBR as number;
-  const advPX = cmdParams.advPX as number;
-  const advPY = cmdParams.advPY as number;
+  const bfs = cmdParams.badgeFontSize as number;
 
   function highlightText(text: string, q: string) {
     if (!q.trim()) return text;
@@ -923,7 +828,7 @@ function SearchCommand({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
         className="flex flex-col gap-0 overflow-hidden ring-0"
         style={{
@@ -949,109 +854,205 @@ function SearchCommand({
           <SmoothInput
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
-            placeholder="Search bookmarks, authors, text…"
+            onKeyDown={(e) => { if (e.key === 'Enter') handleEnter(); }}
+            placeholder="Search or use @author, #category, domain:…"
             wrapperClassName="!bg-transparent !max-w-none !rounded-none !p-0 !border-0 !outline-none search-cmd-input-wrapper"
             className="outline-none ring-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
             style={{ fontSize: ifs }}
           />
-          <button
-            type="button"
-            className="shrink-0 text-[11px] font-medium transition-colors"
-            style={{
-              borderRadius: advBR,
-              paddingLeft: advPX,
-              paddingRight: advPX,
-              paddingTop: advPY,
-              paddingBottom: advPY,
-              color: state.darkMode
-                ? (showAdvanced
-                    ? (cmdParams.advTextActiveDark as string)
-                    : (cmdParams.advTextDark as string))
-                : (showAdvanced
-                    ? (cmdParams.advTextActive as string)
-                    : (cmdParams.advText as string)),
-              background: state.darkMode
-                ? (showAdvanced
-                    ? (cmdParams.advBgActiveDark as string)
-                    : (cmdParams.advBgDark as string))
-                : (showAdvanced
-                    ? (cmdParams.advBgActive as string)
-                    : (cmdParams.advBg as string)),
-            }}
-            onClick={() => setShowAdvanced((v) => !v)}
-          >
-            Advanced
-          </button>
         </div>
-        {showAdvanced && (
-          <div
-            className="search-scrollbar flex-1 overflow-y-auto"
-            style={{ padding: `${cpY}px ${cpX}px` }}
-          >
-            {showSt && (
-              <div
-                className="flex items-center justify-between text-xs text-muted-foreground/60"
-                style={{
-                  paddingTop: stPT,
-                  paddingRight: stPR,
-                  paddingBottom: stPB,
-                  paddingLeft: stPL,
-                }}
-              >
-                <span>{results.length} of {state.allBookmarks.length} results</span>
-              </div>
-            )}
+        <div
+          className="search-scrollbar flex-1 overflow-y-auto"
+          style={{ padding: `${cpY}px ${cpX}px` }}
+        >
+          {prefix === "author" && (
             <div className="flex flex-col" style={{ gap: ig }}>
-              {results.length === 0 && (
-                <div className="py-8 text-center text-sm text-muted-foreground">
-                  No results found.
-                </div>
+              {filteredAuthors.length === 0 && (
+                <div className="py-6 text-center text-sm text-muted-foreground">No authors found.</div>
               )}
-              {results.map((bookmark) => (
+              {filteredAuthors.map((author) => (
                 <button
-                  key={bookmark.id}
+                  key={author.handle}
                   type="button"
-                  className="flex w-full items-start rounded-lg text-left transition-colors"
+                  className="flex w-full items-center gap-3 rounded-lg text-left transition-colors"
                   style={{
-                    gap: ig,
                     paddingLeft: ipX2 + hpX,
                     paddingRight: ipX2 + hpX,
                     paddingTop: ipY2 + hpY,
                     paddingBottom: ipY2 + hpY,
                     backgroundColor: "transparent",
                   }}
-                  onClick={() => handleSelect(bookmark)}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLElement).style.backgroundColor = cmdParams.hoverBg as string;
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
-                  }}
+                  onClick={() => handleApplyFacet("author", author.name)}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = cmdParams.hoverBg as string; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = "transparent"; }}
                 >
-                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate text-sm font-medium text-foreground">
-                        {bookmark.authorName}
-                      </span>
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        @{bookmark.authorHandle}
-                      </span>
-                    </div>
-                    <p className="line-clamp-2 text-sm text-muted-foreground">
-                      {highlightText(bookmark.text, query)}
-                    </p>
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground">
+                    {author.name.charAt(0).toUpperCase()}
                   </div>
-                  <div className="flex shrink-0 flex-col items-end gap-1">
-                    <Badge variant="outline" size="sm">
-                      {bookmark.folders[0] ?? "Uncategorized"}
-                    </Badge>
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate text-sm font-medium text-foreground">{author.name}</span>
+                    <span className="truncate text-xs text-muted-foreground">@{author.handle}</span>
                   </div>
+                  <span
+                    className="shrink-0 rounded-md px-2 py-0.5 text-xs font-medium"
+                    style={{ fontSize: bfs, background: state.darkMode ? cmdParams.prefixBadgeBgDark as string : cmdParams.prefixBadgeBg as string }}
+                  >
+                    {author.count}
+                  </span>
                 </button>
               ))}
             </div>
-          </div>
-        )}
+          )}
+          {prefix === "category" && (
+            <div className="flex flex-col" style={{ gap: ig }}>
+              {filteredCategories.length === 0 && (
+                <div className="py-6 text-center text-sm text-muted-foreground">No categories found.</div>
+              )}
+              {filteredCategories.map((cat) => (
+                <button
+                  key={cat.name}
+                  type="button"
+                  className="flex w-full items-center gap-3 rounded-lg text-left transition-colors"
+                  style={{
+                    paddingLeft: ipX2 + hpX,
+                    paddingRight: ipX2 + hpX,
+                    paddingTop: ipY2 + hpY,
+                    paddingBottom: ipY2 + hpY,
+                    backgroundColor: "transparent",
+                  }}
+                  onClick={() => handleApplyFacet("category", cat.name)}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = cmdParams.hoverBg as string; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = "transparent"; }}
+                >
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-sm">
+                    #
+                  </div>
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate text-sm font-medium text-foreground">
+                      {cat.name.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).replace(/\bAi\b/g, 'AI')}
+                    </span>
+                  </div>
+                  <span
+                    className="shrink-0 rounded-md px-2 py-0.5 text-xs font-medium"
+                    style={{ fontSize: bfs, background: state.darkMode ? cmdParams.prefixBadgeBgDark as string : cmdParams.prefixBadgeBg as string }}
+                  >
+                    {cat.count}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+          {prefix === "domain" && (
+            <div className="flex flex-col" style={{ gap: ig }}>
+              {filteredDomains.length === 0 && (
+                <div className="py-6 text-center text-sm text-muted-foreground">No domains found.</div>
+              )}
+              {filteredDomains.map((domain) => (
+                <button
+                  key={domain.name}
+                  type="button"
+                  className="flex w-full items-center gap-3 rounded-lg text-left transition-colors"
+                  style={{
+                    paddingLeft: ipX2 + hpX,
+                    paddingRight: ipX2 + hpX,
+                    paddingTop: ipY2 + hpY,
+                    paddingBottom: ipY2 + hpY,
+                    backgroundColor: "transparent",
+                  }}
+                  onClick={() => handleApplyFacet("domain", domain.name)}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = cmdParams.hoverBg as string; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = "transparent"; }}
+                >
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-xs text-muted-foreground">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="2" y1="12" x2="22" y2="12" />
+                      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                    </svg>
+                  </div>
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate text-sm font-medium text-foreground">{domain.name}</span>
+                  </div>
+                  <span
+                    className="shrink-0 rounded-md px-2 py-0.5 text-xs font-medium"
+                    style={{ fontSize: bfs, background: state.darkMode ? cmdParams.prefixBadgeBgDark as string : cmdParams.prefixBadgeBg as string }}
+                  >
+                    {domain.count}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+          {!prefix && (
+            <>
+              <div
+                className="flex items-center justify-between text-xs text-muted-foreground/60"
+                style={{
+                  paddingTop: 4,
+                  paddingRight: 12,
+                  paddingBottom: 8,
+                  paddingLeft: 12,
+                }}
+              >
+                <span>Bookmark results</span>
+              </div>
+              <div className="flex flex-col" style={{ gap: ig }}>
+                {(() => {
+                  const max = cmdParams.maxResults as number;
+                  const results = !query.trim()
+                    ? state.allBookmarks.slice(0, max)
+                    : state.allBookmarks.filter((b) => {
+                        const q = query.toLowerCase();
+                        return (
+                          b.text.toLowerCase().includes(q) ||
+                          b.authorName.toLowerCase().includes(q) ||
+                          b.authorHandle.toLowerCase().includes(q)
+                        );
+                      }).slice(0, max);
+                  return results.length === 0 ? (
+                    <div className="py-6 text-center text-sm text-muted-foreground">No results found.</div>
+                  ) : (
+                    results.map((bookmark) => (
+                      <button
+                        key={bookmark.id}
+                        type="button"
+                        className="flex w-full items-start rounded-lg text-left transition-colors"
+                        style={{
+                          gap: ig,
+                          paddingLeft: ipX2 + hpX,
+                          paddingRight: ipX2 + hpX,
+                          paddingTop: ipY2 + hpY,
+                          paddingBottom: ipY2 + hpY,
+                          backgroundColor: "transparent",
+                        }}
+                        onClick={() => {
+                          appliedRef.current = true;
+                          onOpenChange(false);
+                          window.open(bookmark.url, "_blank");
+                        }}
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = cmdParams.hoverBg as string; }}
+                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = "transparent"; }}
+                      >
+                        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate text-sm font-medium text-foreground">{bookmark.authorName}</span>
+                            <span className="shrink-0 text-xs text-muted-foreground">@{bookmark.authorHandle}</span>
+                          </div>
+                          <p className="line-clamp-2 text-sm text-muted-foreground">
+                            {highlightText(bookmark.text, query)}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 flex-col items-end gap-1">
+                          <Badge variant="outline" size="sm">{bookmark.folders[0] ?? "Uncategorized"}</Badge>
+                        </div>
+                      </button>
+                    ))
+                  );
+                })()}
+              </div>
+            </>
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   );
@@ -1060,7 +1061,7 @@ function SearchCommand({
 export default function BookmarksViewer() {
   const { refs, state, actions, helpers } = useBookmarkViewer();
   const [searchOpen, setSearchOpen] = useState(false);
-  const isMobile = useMediaQuery("(max-width: 640px)");
+  const isMobile = useMediaQuery("(max-width: 720px)");
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -1083,7 +1084,6 @@ export default function BookmarksViewer() {
           onSearchOpenChange={setSearchOpen}
         />
         <div className="workspace-shell">
-          <SidebarRegion state={state} actions={actions} helpers={helpers} />
           <FeedRegion refs={refs} state={state} actions={actions} helpers={helpers} mobile={isMobile} />
         </div>
       </section>
