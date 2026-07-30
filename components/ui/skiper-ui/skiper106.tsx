@@ -135,15 +135,16 @@ const SmoothInput = ({
       },
       placeholder: {
         type: "text",
-        default: placeholder ?? "smooth input",
+        default: "Search keyword, @author, #category…",
         placeholder: "Empty state text…",
       },
-      fontSize: [24, 12, 48, 2],
+      fontSize: [16, 12, 48, 2],
       spring: {
         type: "spring",
         stiffness: 500,
         damping: 30,
         mass: 0.5,
+        __mode: "advanced",
       },
       clear: { type: "action", label: "Clear value" },
     },

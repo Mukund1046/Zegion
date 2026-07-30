@@ -163,6 +163,10 @@ body {
   transition: background 0.32s ease, color 0.32s ease;
 }
 
+.font-mono {
+  font-family: var(--font-dm-mono), "DM Mono", "Cascadia Code", "Consolas", monospace;
+}
+
 body.dark-mode {
   color-scheme: dark;
   --background: #000000;
@@ -1431,21 +1435,16 @@ body.dark-mode .grid-item-text {
 }
 
 .search-scrollbar {
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 .search-scrollbar::-webkit-scrollbar {
-  width: 5px;
-}
-.search-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-.search-scrollbar::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 3px;
-}
-.search-scrollbar::-webkit-scrollbar-button {
   display: none;
+}
+
+.search-cmd-input::placeholder {
+  font-family: var(--font-host-grotesk), system-ui, sans-serif;
+  opacity: 0.5;
 }
 
 .skip-link {

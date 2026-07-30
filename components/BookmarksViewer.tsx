@@ -662,6 +662,11 @@ function SearchCommand({
 }) {
   const [query, setQuery] = useState("");
   const appliedRef = useRef(false);
+  const [focusedIndex, setFocusedIndex] = useState(-1);
+  const stableResultsRef = useRef<typeof state.allBookmarks>([]);
+  const pointerMoveCountRef = useRef(0);
+  const lastPointeroverCountRef = useRef(0);
+  const lastKeyTimeRef = useRef(0);
 
   useEffect(() => {
     if (open) {
@@ -681,28 +686,31 @@ function SearchCommand({
   );
 
   const cmdParams = useDialKit("Search Command", {
-    width: [560, 320, 800, 20],
+    width: [500, 320, 800, 20],
     maxHeight: [460, 200, 800, 20],
-    borderRadius: [15, 0, 32, 1],
+    borderRadius: [26, 0, 32, 1],
     strokeColor: { type: "color", default: "var(--border)" },
     bgColor: { type: "color", default: "var(--popover)" },
-    hoverBg: { type: "color", default: "var(--muted)" },
+    hoverBg: { type: "color", default: "#ececec" },
+    hoverBgDark: { type: "color", default: "var(--muted)" },
     cardPaddingX: [4, 0, 24, 1],
     cardPaddingY: [4, 0, 24, 1],
     inputPaddingX: [12, 4, 32, 1],
     inputPaddingY: [10, 4, 24, 1],
-    inputFontSize: [14, 10, 24, 1],
+    inputFontSize: [16, 10, 24, 1],
     itemGap: [0, 0, 16, 1],
     itemPaddingX: [8, 4, 32, 1],
     itemPaddingY: [8, 2, 20, 1],
     hoverPaddingX: [4, 0, 16, 1],
-    hoverPaddingY: [0, 0, 12, 1],
+    hoverPaddingY: [4, 0, 12, 1],
     maxResults: [50, 5, 200, 5],
     badgeFontSize: [11, 9, 16, 1],
     pillPaddingX: [10, 0, 32, 1],
     pillPaddingY: [4, 0, 16, 1],
     prefixBadgeBg: { type: "color", default: "#e8e8ed" },
-    prefixBadgeBgDark: { type: "color", default: "#2a2a2a" },
+    prefixBadgeBgDark: { type: "color", default: "#252527" },
+    monoFontSize: [9, 9, 20, 1],
+    placeholderIndent: [0, -20, 40, 1],
   });
 
   const prefix = useMemo(() => {
@@ -803,6 +811,64 @@ function SearchCommand({
       .slice(0, cmdParams.maxResults as number);
   }, [sites, prefixQuery, cmdParams.maxResults]);
 
+  const maxBookmarkResults = cmdParams.maxResults as number;
+
+  const bookmarkResults = useMemo(() => {
+    if (prefix) return [];
+    const q = query.trim().toLowerCase();
+    const candidates = q
+      ? state.allBookmarks.filter((b) =>
+          b.text.toLowerCase().includes(q) ||
+          b.authorName.toLowerCase().includes(q) ||
+          b.authorHandle.toLowerCase().includes(q)
+        ).slice(0, maxBookmarkResults)
+      : state.allBookmarks.slice(0, maxBookmarkResults);
+
+    const prev = stableResultsRef.current;
+    if (!prev.length || !candidates.length) {
+      stableResultsRef.current = candidates;
+      return candidates;
+    }
+
+    const nextSet = new Map<string, Bookmark>();
+    const nextIds = new Set<string>();
+    for (const b of candidates) {
+      nextSet.set(b.id, b);
+      nextIds.add(b.id);
+    }
+
+    const merged: Bookmark[] = [];
+    const used = new Set<string>();
+    let focusedId = "";
+
+    if (prev.some((b) => b.url === stableResultsRef.current[prev.length - 1]?.url)) {
+      if (
+        focusedIndex >= 0 &&
+        focusedIndex < prev.length &&
+        nextIds.has(prev[focusedIndex].id)
+      ) {
+        focusedId = prev[focusedIndex].id;
+      }
+    }
+
+    for (const b of prev) {
+      if (b.id === focusedId || nextIds.has(b.id)) {
+        merged.push(b);
+        used.add(b.id);
+      }
+    }
+
+    for (const b of candidates) {
+      if (!used.has(b.id)) {
+        merged.push(b);
+        used.add(b.id);
+      }
+    }
+
+    stableResultsRef.current = merged;
+    return merged;
+  }, [query, state.allBookmarks, prefix, maxBookmarkResults, focusedIndex]);
+
   const handleApplyFacet = useCallback(
     (type: FacetType, value: string) => {
       appliedRef.current = true;
@@ -822,11 +888,15 @@ function SearchCommand({
       handleApplyFacet("domain", filteredDomains[0].name);
     } else if (prefix === "site" && filteredSites.length > 0) {
       handleApplyFacet("site", filteredSites[0].name);
-    } else {
+    } else if (!prefix && bookmarkResults.length > 0 && focusedIndex >= 0 && focusedIndex < bookmarkResults.length) {
+      const bookmark = bookmarkResults[focusedIndex];
+      onOpenChange(false);
+      window.open(bookmark.url, "_blank");
+    } else if (!prefix) {
       actions.setActiveSearch(query, true);
       onOpenChange(false);
     }
-  }, [prefix, filteredAuthors, filteredCategories, filteredDomains, filteredSites, query, actions, onOpenChange, handleApplyFacet]);
+  }, [prefix, filteredAuthors, filteredCategories, filteredDomains, filteredSites, bookmarkResults, focusedIndex, query, actions, onOpenChange, handleApplyFacet]);
 
   const w = cmdParams.width as number;
   const mh = cmdParams.maxHeight as number;
@@ -844,6 +914,8 @@ function SearchCommand({
   const bfs = cmdParams.badgeFontSize as number;
   const ppX = cmdParams.pillPaddingX as number;
   const ppY = cmdParams.pillPaddingY as number;
+  const mfs = cmdParams.monoFontSize as number;
+  const monoStyle = { fontSize: mfs, textTransform: "uppercase" as const, fontFamily: "var(--font-dm-mono), DM Mono, monospace" };
 
   function highlightText(text: string, q: string) {
     if (!q.trim()) return text;
@@ -859,7 +931,7 @@ function SearchCommand({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
-        className="flex flex-col gap-0 overflow-hidden ring-0"
+        className="flex flex-col gap-0 overflow-hidden ring-0 sm:max-w-none"
         style={{
           width: w,
           maxHeight: mh,
@@ -882,22 +954,40 @@ function SearchCommand({
           <HugeiconsIcon icon={Search01Icon} size={16} className="shrink-0 text-muted-foreground/50" />
           <SmoothInput
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') handleEnter(); }}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setFocusedIndex(0);
+              stableResultsRef.current = [];
+            }}
+            onKeyDown={(e) => {
+              const total = bookmarkResults.length;
+              if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setFocusedIndex((i) => (i < total - 1 ? i + 1 : 0));
+                lastKeyTimeRef.current = Date.now();
+              } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setFocusedIndex((i) => (i > 0 ? i - 1 : total - 1));
+                lastKeyTimeRef.current = Date.now();
+              } else if (e.key === 'Enter') {
+                handleEnter();
+              }
+            }}
             placeholder="Search or use @author, #category, domain:, sites:…"
             wrapperClassName="!bg-transparent !max-w-none !rounded-none !p-0 !border-0 !outline-none search-cmd-input-wrapper"
-            className="outline-none ring-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
-            style={{ fontSize: ifs }}
+            className="outline-none ring-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 search-cmd-input"
+            style={{ fontSize: ifs, textIndent: cmdParams.placeholderIndent as number }}
           />
         </div>
         <div
-          className="search-scrollbar flex-1 overflow-y-auto"
+          className="search-scrollbar flex-1 overflow-y-auto overflow-x-hidden"
           style={{ padding: `${cpY}px ${cpX}px` }}
+          onPointerMove={() => { pointerMoveCountRef.current++; }}
         >
           {prefix === "author" && (
             <div className="flex flex-col" style={{ gap: ig }}>
               {filteredAuthors.length === 0 && (
-                <div className="py-6 text-center text-sm text-muted-foreground">No authors found.</div>
+                <div className="py-6 text-center text-sm text-muted-foreground">No authors matching &quot;{prefixQuery}&quot;</div>
               )}
               {filteredAuthors.map((author) => (
                 <button
@@ -912,16 +1002,16 @@ function SearchCommand({
                     backgroundColor: "transparent",
                   }}
                   onClick={() => handleApplyFacet("author", author.name)}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = cmdParams.hoverBg as string; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = "transparent"; }}
-                >
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground">
-                    {author.name.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate text-sm font-medium text-foreground">{author.name}</span>
-                    <span className="truncate text-xs text-muted-foreground">@{author.handle}</span>
-                  </div>
+                   onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = state.darkMode ? cmdParams.hoverBgDark as string : cmdParams.hoverBg as string; }}
+                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = "transparent"; }}
+                 >
+                   <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground">
+                     {author.name.charAt(0).toUpperCase()}
+                   </div>
+                   <div className="flex min-w-0 flex-1 flex-col">
+                     <span className="truncate text-sm font-medium text-foreground">{author.name}</span>
+                     <span className="truncate text-xs text-muted-foreground" style={monoStyle}>@{author.handle}</span>
+                   </div>
                   <span
                     className="shrink-0 rounded-md text-xs font-semibold capitalize tracking-wide"
                     style={{ paddingLeft: ppX, paddingRight: ppX, paddingTop: ppY, paddingBottom: ppY, fontSize: bfs, background: state.darkMode ? cmdParams.prefixBadgeBgDark as string : cmdParams.prefixBadgeBg as string }}
@@ -935,7 +1025,7 @@ function SearchCommand({
           {prefix === "category" && (
             <div className="flex flex-col" style={{ gap: ig }}>
               {filteredCategories.length === 0 && (
-                <div className="py-6 text-center text-sm text-muted-foreground">No categories found.</div>
+                <div className="py-6 text-center text-sm text-muted-foreground">No categories matching &quot;{prefixQuery}&quot;</div>
               )}
               {filteredCategories.map((cat) => (
                 <button
@@ -950,12 +1040,12 @@ function SearchCommand({
                     backgroundColor: "transparent",
                   }}
                   onClick={() => handleApplyFacet("category", cat.name)}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = cmdParams.hoverBg as string; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = "transparent"; }}
-                >
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-sm">
-                    #
-                  </div>
+                   onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = state.darkMode ? cmdParams.hoverBgDark as string : cmdParams.hoverBg as string; }}
+                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = "transparent"; }}
+                 >
+                   <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-sm">
+                     #
+                   </div>
                   <div className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate text-sm font-medium text-foreground">
                       {cat.name.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).replace(/\bAi\b/g, 'AI')}
@@ -971,88 +1061,88 @@ function SearchCommand({
               ))}
             </div>
           )}
-          {prefix === "domain" && (
-            <div className="flex flex-col" style={{ gap: ig }}>
-              {filteredDomains.length === 0 && (
-                <div className="py-6 text-center text-sm text-muted-foreground">No domains found.</div>
-              )}
-              {filteredDomains.map((domain) => (
-                <button
-                  key={domain.name}
-                  type="button"
-                  className="flex w-full items-center gap-3 rounded-lg text-left transition-colors"
-                  style={{
-                    paddingLeft: ipX2 + hpX,
-                    paddingRight: ipX2 + hpX,
-                    paddingTop: ipY2 + hpY,
-                    paddingBottom: ipY2 + hpY,
-                    backgroundColor: "transparent",
-                  }}
-                  onClick={() => handleApplyFacet("domain", domain.name)}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = cmdParams.hoverBg as string; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = "transparent"; }}
-                >
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-xs text-muted-foreground">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="10" />
-                      <line x1="2" y1="12" x2="22" y2="12" />
-                      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-                    </svg>
-                  </div>
-                  <div className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate text-sm font-medium text-foreground">{domain.name}</span>
-                  </div>
-                  <span
-                    className="shrink-0 rounded-md text-xs font-semibold capitalize tracking-wide"
-                    style={{ paddingLeft: ppX, paddingRight: ppX, paddingTop: ppY, paddingBottom: ppY, fontSize: bfs, background: state.darkMode ? cmdParams.prefixBadgeBgDark as string : cmdParams.prefixBadgeBg as string }}
-                  >
-                    {domain.count}
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
-          {prefix === "site" && (
-            <div className="flex flex-col" style={{ gap: ig }}>
-              {filteredSites.length === 0 && (
-                <div className="py-6 text-center text-sm text-muted-foreground">No sites found.</div>
-              )}
-              {filteredSites.map((site) => (
-                <button
-                  key={site.name}
-                  type="button"
-                  className="flex w-full items-center gap-3 rounded-lg text-left transition-colors"
-                  style={{
-                    paddingLeft: ipX2 + hpX,
-                    paddingRight: ipX2 + hpX,
-                    paddingTop: ipY2 + hpY,
-                    paddingBottom: ipY2 + hpY,
-                    backgroundColor: "transparent",
-                  }}
-                  onClick={() => handleApplyFacet("site", site.name)}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = cmdParams.hoverBg as string; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = "transparent"; }}
-                >
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-xs text-muted-foreground">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
-                      <line x1="8" y1="21" x2="16" y2="21" />
-                      <line x1="12" y1="17" x2="12" y2="21" />
-                    </svg>
-                  </div>
-                  <div className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate text-sm font-medium text-foreground">{site.name}</span>
-                  </div>
-                  <span
-                    className="shrink-0 rounded-md text-xs font-semibold capitalize tracking-wide"
-                    style={{ paddingLeft: ppX, paddingRight: ppX, paddingTop: ppY, paddingBottom: ppY, fontSize: bfs, background: state.darkMode ? cmdParams.prefixBadgeBgDark as string : cmdParams.prefixBadgeBg as string }}
-                  >
-                    {site.count}
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
+           {prefix === "domain" && (
+             <div className="flex flex-col" style={{ gap: ig }}>
+               {filteredDomains.length === 0 && (
+                 <div className="py-6 text-center text-sm text-muted-foreground">{prefixQuery ? `No domains matching "${prefixQuery}"` : "No classified domains — run domain classification first"}</div>
+               )}
+               {filteredDomains.map((domain) => (
+                 <button
+                   key={domain.name}
+                   type="button"
+                   className="flex w-full items-center gap-3 rounded-lg text-left transition-colors"
+                   style={{
+                     paddingLeft: ipX2 + hpX,
+                     paddingRight: ipX2 + hpX,
+                     paddingTop: ipY2 + hpY,
+                     paddingBottom: ipY2 + hpY,
+                     backgroundColor: "transparent",
+                   }}
+                   onClick={() => handleApplyFacet("domain", domain.name)}
+                   onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = state.darkMode ? cmdParams.hoverBgDark as string : cmdParams.hoverBg as string; }}
+                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = "transparent"; }}
+                 >
+                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-xs text-muted-foreground">
+                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                       <circle cx="12" cy="12" r="10" />
+                       <line x1="2" y1="12" x2="22" y2="12" />
+                       <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                     </svg>
+                   </div>
+                   <div className="flex min-w-0 flex-1 flex-col">
+                     <span className="truncate text-sm font-medium text-foreground" style={{ textTransform: "capitalize" }}>{domain.name}</span>
+                   </div>
+                   <span
+                     className="shrink-0 rounded-md text-xs font-semibold capitalize tracking-wide"
+                     style={{ paddingLeft: ppX, paddingRight: ppX, paddingTop: ppY, paddingBottom: ppY, fontSize: bfs, background: state.darkMode ? cmdParams.prefixBadgeBgDark as string : cmdParams.prefixBadgeBg as string }}
+                   >
+                     {domain.count}
+                   </span>
+                 </button>
+               ))}
+             </div>
+           )}
+           {prefix === "site" && (
+             <div className="flex flex-col" style={{ gap: ig }}>
+               {filteredSites.length === 0 && (
+                 <div className="py-6 text-center text-sm text-muted-foreground">{prefixQuery ? `No sites matching "${prefixQuery}"` : "No linked sites in bookmarks"}</div>
+               )}
+               {filteredSites.map((site) => (
+                 <button
+                   key={site.name}
+                   type="button"
+                   className="flex w-full items-center gap-3 rounded-lg text-left transition-colors"
+                   style={{
+                     paddingLeft: ipX2 + hpX,
+                     paddingRight: ipX2 + hpX,
+                     paddingTop: ipY2 + hpY,
+                     paddingBottom: ipY2 + hpY,
+                     backgroundColor: "transparent",
+                   }}
+                   onClick={() => handleApplyFacet("site", site.name)}
+                   onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = state.darkMode ? cmdParams.hoverBgDark as string : cmdParams.hoverBg as string; }}
+                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = "transparent"; }}
+                 >
+                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-xs text-muted-foreground">
+                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                       <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+                       <line x1="8" y1="21" x2="16" y2="21" />
+                       <line x1="12" y1="17" x2="12" y2="21" />
+                     </svg>
+                   </div>
+                   <div className="flex min-w-0 flex-1 flex-col">
+                     <span className="truncate text-sm font-medium text-foreground">{site.name}</span>
+                   </div>
+                   <span
+                     className="shrink-0 rounded-md text-xs font-semibold capitalize tracking-wide"
+                     style={{ paddingLeft: ppX, paddingRight: ppX, paddingTop: ppY, paddingBottom: ppY, fontSize: bfs, background: state.darkMode ? cmdParams.prefixBadgeBgDark as string : cmdParams.prefixBadgeBg as string }}
+                   >
+                     {site.count}
+                   </span>
+                 </button>
+               ))}
+             </div>
+           )}
           {!prefix && (
             <>
               <div
@@ -1067,22 +1157,18 @@ function SearchCommand({
                 <span>Bookmark results</span>
               </div>
               <div className="flex flex-col" style={{ gap: ig }}>
-                {(() => {
-                  const max = cmdParams.maxResults as number;
-                  const results = !query.trim()
-                    ? state.allBookmarks.slice(0, max)
-                    : state.allBookmarks.filter((b) => {
-                        const q = query.toLowerCase();
-                        return (
-                          b.text.toLowerCase().includes(q) ||
-                          b.authorName.toLowerCase().includes(q) ||
-                          b.authorHandle.toLowerCase().includes(q)
-                        );
-                      }).slice(0, max);
-                  return results.length === 0 ? (
-                    <div className="py-6 text-center text-sm text-muted-foreground">No results found.</div>
-                  ) : (
-                    results.map((bookmark) => (
+                {bookmarkResults.length === 0 ? (
+                  <div className="py-6 text-center text-sm text-muted-foreground">
+                    {query.trim() ? (
+                      <span>No results for &quot;{query}&quot; — try <span className="text-foreground/70" style={monoStyle}>@author</span>, <span className="text-foreground/70" style={monoStyle}>#category</span>, <span className="text-foreground/70" style={monoStyle}>domain:</span>, or <span className="text-foreground/70" style={monoStyle}>sites:</span></span>
+                    ) : (
+                      <span>No bookmarks found</span>
+                    )}
+                  </div>
+                ) : (
+                  bookmarkResults.map((bookmark, index) => {
+                    const isFocused = index === focusedIndex;
+                    return (
                       <button
                         key={bookmark.id}
                         type="button"
@@ -1093,32 +1179,41 @@ function SearchCommand({
                           paddingRight: ipX2 + hpX,
                           paddingTop: ipY2 + hpY,
                           paddingBottom: ipY2 + hpY,
-                          backgroundColor: "transparent",
+                          backgroundColor: isFocused ? (state.darkMode ? cmdParams.hoverBgDark as string : cmdParams.hoverBg as string) : "transparent",
                         }}
                         onClick={() => {
                           appliedRef.current = true;
                           onOpenChange(false);
                           window.open(bookmark.url, "_blank");
                         }}
-                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = cmdParams.hoverBg as string; }}
-                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = "transparent"; }}
+                        onPointerEnter={() => {
+                          if (Date.now() - lastKeyTimeRef.current > 50) {
+                            lastPointeroverCountRef.current = pointerMoveCountRef.current;
+                            setFocusedIndex(index);
+                          }
+                        }}
                       >
                         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                           <div className="flex items-center gap-2">
                             <span className="truncate text-sm font-medium text-foreground">{bookmark.authorName}</span>
-                            <span className="shrink-0 text-xs text-muted-foreground">@{bookmark.authorHandle}</span>
+                            <span className="shrink-0 text-xs text-muted-foreground" style={monoStyle}>@{bookmark.authorHandle}</span>
                           </div>
+                          {(bookmark.linkedDomains?.[0] || bookmark.domain) && (
+                            <span className="truncate text-xs text-muted-foreground/50" style={monoStyle}>
+                              {bookmark.linkedDomains?.[0] || bookmark.domain}
+                            </span>
+                          )}
                           <p className="line-clamp-2 text-sm text-muted-foreground">
                             {highlightText(bookmark.text, query)}
                           </p>
                         </div>
-                        <div className="flex shrink-0 flex-col items-end gap-1">
-                          <Badge variant="outline" size="sm" className="capitalize tracking-wide" style={{ paddingLeft: ppX, paddingRight: ppX, paddingTop: ppY, paddingBottom: ppY }}>{bookmark.category || (bookmark.folders[0] ?? "Uncategorized")}</Badge>
+                        <div className="flex shrink-0 items-center">
+                          <Badge variant="outline" size="sm" className="truncate tracking-wide" style={{ paddingLeft: ppX, paddingRight: ppX, paddingTop: ppY, paddingBottom: ppY, ...monoStyle }}>{bookmark.category || (bookmark.folders[0] ?? "Uncategorized")}</Badge>
                         </div>
                       </button>
-                    ))
-                  );
-                })()}
+                    );
+                  })
+                )}
               </div>
             </>
           )}
