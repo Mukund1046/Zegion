@@ -7,9 +7,9 @@
 <div align="center">
 
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)](https://nextjs.org)
-[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![license](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?logo=typescript)](https://www.typescriptlang.org)
-[![fieldtheory](https://img.shields.io/badge/powered%20by-fieldtheory-blueviolet)](https://github.com/afar1/fieldtheory-cli)
+[![fieldtheory](https://img.shields.io/badge/Powered%20by-Fieldtheory-blueviolet)](https://github.com/afar1/fieldtheory-cli)
 
 **Runs on macOS · Linux · Windows**
 
