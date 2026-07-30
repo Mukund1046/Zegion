@@ -16,6 +16,9 @@ data/
 Skills/
 skills-lock.json
 
+# Generated reports
+react-doctor-report.json
+
 # OS
 .DS_Store
 Thumbs.db
