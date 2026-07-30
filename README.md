@@ -259,7 +259,7 @@ Zegion is a **local-first** Next.js application. No cloud service, account, or A
 | **Language** | [TypeScript](https://www.typescriptlang.org) / JavaScript |
 | **Runtime** | [Node.js](https://nodejs.org) |
 | **Animation** | [Motion](https://motion.dev) (Framer Motion) |
-| **UI primitives** | [Base UI](https://base-ui.com) (Radix), [Dial Kit](https://dialkit.dev) |
+| **UI primitives** | [Base UI](https://base-ui.com) (Radix), [Dial Kit](https://github.com/joshpuckett/dialkit) |
 | **Icons** | [Hugeicons](https://hugeicons.com), [Lucide](https://lucide.dev) |
 | **Bookmark sync** | [fieldtheory-cli](https://github.com/afar1/fieldtheory-cli) |
 | **Styling** | [Tailwind CSS 4](https://tailwindcss.com) + CSS custom properties |
