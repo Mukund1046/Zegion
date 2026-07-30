@@ -223,7 +223,7 @@ export default function SyncSettingsDialog({
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange} position="right">
-      <DrawerPopup variant="inset" className="border-s-0 sm:border-0 rounded-e-none sm:rounded-e-none sm:rounded-s-2xl">
+      <DrawerPopup variant="inset" className="border-s-0 sm:border-0 rounded-e-none sm:rounded-e-none" style={{ borderStartStartRadius: 24, borderEndStartRadius: 24 }}>
         <DrawerHeader
           style={{
             paddingTop: p.Title.paddingTop,

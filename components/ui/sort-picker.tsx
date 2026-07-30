@@ -264,7 +264,7 @@ const SelectableField = React.forwardRef<HTMLButtonElement, SelectableFieldProps
             marginLeft: showChevron ? 4 : 0,
             rotate: isPopoverOpen ? 180 : 0,
           }}
-          transition={{ type: 'spring', stiffness: 300, damping: 30, mass: 0.5 }}
+          transition={{ type: 'spring', stiffness: 520, damping: 38 }}
           style={{ overflow: 'hidden', display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}
         >
           <HugeiconsIcon icon={ChevronDownIcon} size={dial?.Layout?.iconSize ?? 18} color="currentColor" strokeWidth={dial?.Layout?.iconStrokeWidth ?? 2.5} />

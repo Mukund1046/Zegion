@@ -142,7 +142,7 @@ function ToolbarRegion({
                 type="button"
                 whileHover={{ scale: 1.03, y: -1 }}
                 whileTap={{ scale: 0.96 }}
-                transition={{ type: "spring", stiffness: 300, damping: 30, mass: 0.5 }}
+                transition={{ type: "spring", stiffness: 520, damping: 38 }}
                 onClick={() => onSearchOpenChange(true)}
                 style={{
                   minWidth: state.activeSearch ? (btnParams.minWidth as number) : undefined,
@@ -229,7 +229,7 @@ function ToolbarRegion({
                     initial={{ scale: 0, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
                     exit={{ scale: 0, opacity: 0 }}
-                    transition={{ type: "spring", stiffness: 300, damping: 30, mass: 0.5 }}
+                    transition={{ type: "spring", stiffness: 520, damping: 38 }}
                     style={{ display: "inline-flex", alignItems: "center" }}
                   >
                     <ThinkingOrb state="composing" size={20} aria-label="Working" />
@@ -244,7 +244,7 @@ function ToolbarRegion({
                   type="button"
                   whileHover={{ scale: 1.03, y: -1 }}
                   whileTap={{ scale: 0.96 }}
-                  transition={{ type: "spring", stiffness: 300, damping: 30, mass: 0.5 }}
+                  transition={{ type: "spring", stiffness: 520, damping: 38 }}
                 >
                   <HugeiconsIcon icon={EllipsisIcon} size={16} className="opacity-50" />
                 </motion.button>
@@ -688,7 +688,7 @@ function SearchCommand({
   const cmdParams = useDialKit("Search Command", {
     width: [500, 320, 800, 20],
     maxHeight: [460, 200, 800, 20],
-    borderRadius: [26, 0, 32, 1],
+    borderRadius: [24, 0, 32, 1],
     strokeColor: { type: "color", default: "var(--border)" },
     bgColor: { type: "color", default: "var(--popover)" },
     hoverBg: { type: "color", default: "#ececec" },
@@ -993,7 +993,7 @@ function SearchCommand({
                 <button
                   key={author.handle}
                   type="button"
-                  className="flex w-full items-center gap-3 rounded-lg text-left transition-colors"
+                  className="flex w-full items-center gap-3 rounded-xl text-left transition-colors"
                   style={{
                     paddingLeft: ipX2 + hpX,
                     paddingRight: ipX2 + hpX,
@@ -1031,7 +1031,7 @@ function SearchCommand({
                 <button
                   key={cat.name}
                   type="button"
-                  className="flex w-full items-center gap-3 rounded-lg text-left transition-colors"
+                  className="flex w-full items-center gap-3 rounded-xl text-left transition-colors"
                   style={{
                     paddingLeft: ipX2 + hpX,
                     paddingRight: ipX2 + hpX,
@@ -1070,7 +1070,7 @@ function SearchCommand({
                  <button
                    key={domain.name}
                    type="button"
-                   className="flex w-full items-center gap-3 rounded-lg text-left transition-colors"
+                   className="flex w-full items-center gap-3 rounded-xl text-left transition-colors"
                    style={{
                      paddingLeft: ipX2 + hpX,
                      paddingRight: ipX2 + hpX,
@@ -1111,7 +1111,7 @@ function SearchCommand({
                  <button
                    key={site.name}
                    type="button"
-                   className="flex w-full items-center gap-3 rounded-lg text-left transition-colors"
+                   className="flex w-full items-center gap-3 rounded-xl text-left transition-colors"
                    style={{
                      paddingLeft: ipX2 + hpX,
                      paddingRight: ipX2 + hpX,
@@ -1172,7 +1172,7 @@ function SearchCommand({
                       <button
                         key={bookmark.id}
                         type="button"
-                        className="flex w-full items-start rounded-lg text-left transition-colors"
+                        className="flex w-full items-start rounded-xl text-left transition-colors"
                         style={{
                           gap: ig,
                           paddingLeft: ipX2 + hpX,
