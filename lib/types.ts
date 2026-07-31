@@ -68,6 +68,7 @@ export interface PersistedState {
   activeSearch?: string;
   activeFacetType?: FacetType;
   activeFacetValue?: string;
+  activeZoom?: number;
   feedScrollY?: number;
 }
 

@@ -633,6 +633,61 @@ function FeedRegion({
             />
           </button>
         </div>
+        <div
+          className="zoom-toggle"
+          role="group"
+          aria-label="Density"
+          style={{
+            padding: `${bar.togglePadding as number}px`,
+            gap: `${bar.toggleGap as number}px`,
+          }}
+        >
+          <button
+            type="button"
+            aria-label="Zoom out"
+            className="zoom-btn"
+            onClick={() => actions.applyZoom(-1)}
+            disabled={state.zoom <= -3}
+            style={{ padding: `${bar.btnPadding as number}px` }}
+          >
+            −
+          </button>
+          <span
+            className="zoom-value"
+            aria-hidden="true"
+            style={{ padding: `${bar.btnPadding as number}px 0` }}
+          >
+            {state.zoomPercent}%
+          </span>
+          <button
+            type="button"
+            aria-label="Zoom in"
+            className="zoom-btn"
+            onClick={() => actions.applyZoom(1)}
+            disabled={state.zoom >= 3}
+            style={{ padding: `${bar.btnPadding as number}px` }}
+          >
+            +
+          </button>
+          <button
+            type="button"
+            aria-label="Reset zoom"
+            className="zoom-btn"
+            onClick={() => actions.resetZoom()}
+            disabled={state.zoom === 0}
+            style={{ padding: `${bar.btnPadding as number}px` }}
+          >
+            <Image
+              className="ui-icon"
+              src={helpers.iconPath("arrow-reload-horizontal")}
+              alt=""
+              aria-hidden="true"
+              width={bar.iconSize as number}
+              height={bar.iconSize as number}
+              unoptimized
+            />
+          </button>
+        </div>
       </motion.div>
       </div>
     </div>

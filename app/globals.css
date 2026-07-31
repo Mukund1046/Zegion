@@ -290,6 +290,7 @@ select:focus-visible,
 .content-shell,
 .folder-tab,
 .view-toggle-btn,
+.zoom-btn,
 .grid-item,
 .grid-item-body,
 .grid-item-text,
@@ -423,6 +424,7 @@ body.dark-mode .view-toggle {
 }
 
 .view-toggle-btn,
+.zoom-btn,
 .folder-tab {
   border: none;
   cursor: pointer;
@@ -773,6 +775,60 @@ body.dark-mode .view-toggle-btn {
 body.dark-mode .view-toggle-btn.active {
   background: var(--primary);
   color: var(--primary-foreground);
+}
+
+.zoom-toggle {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 8px;
+  background: var(--muted);
+  flex-shrink: 0;
+}
+
+.zoom-btn {
+  border-radius: 6px;
+  background: transparent;
+  color: #6c625a;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  min-width: 24px;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.zoom-btn:hover {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.zoom-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+  background: transparent;
+  color: #6c625a;
+}
+
+.zoom-btn:disabled .ui-icon {
+  opacity: 0.35;
+  filter: none;
+}
+
+.zoom-value {
+  color: var(--muted-foreground);
+  font-weight: 600;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  min-width: 34px;
+  text-align: center;
+  user-select: none;
+  line-height: 1;
+}
+
+body.dark-mode .zoom-btn {
+  color: var(--muted-foreground);
 }
 
 .category-bar {

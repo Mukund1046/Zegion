@@ -41,6 +41,13 @@ import type { LayoutItem } from "@/lib/bookmark-utils";
 
 const DRAG_THRESHOLD = 5;
 
+// In-app zoom is a density control: each step shifts the effective column
+// count by one (cards glide via the geometry transition system). Positive
+// zoom = zoom in = fewer, larger cards.
+const ZOOM_MIN = -3;
+const ZOOM_MAX = 3;
+const ZOOM_WHEEL_THRESHOLD = 60;
+
 interface ScrubberMarkerData {
   bookmark: Bookmark;
   progress: number;
@@ -151,6 +158,8 @@ export function useBookmarkViewer() {
   const [activeView, setActiveView] = useState<ViewMode>("media");
   const activeViewRef = useRef<ViewMode>(activeView);
   useEffect(() => { activeViewRef.current = activeView }, [activeView])
+  const [zoom, setZoom] = useState(0);
+  const zoomRef = useRef(0);
   const [activeSort, setActiveSort] = useState<SortConfig>(DEFAULT_SORT);
   const [activeSearch, setActiveSearch] = useState("");
   const [activeFacetType, setActiveFacetType] = useState<FacetType>("all");
@@ -223,6 +232,7 @@ export function useBookmarkViewer() {
     transitionRaf: null as number | null,
     transitionBaselined: false,
     animating: false,
+    zoomWheelAccumulator: 0,
     cameraOffset: { x: 0, y: 0 },
     targetOffset: { x: 0, y: 0 },
     isDragging: false,
@@ -251,6 +261,7 @@ export function useBookmarkViewer() {
         activeSearch,
         activeFacetType,
         activeFacetValue,
+        activeZoom: zoom,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch (e) {
@@ -264,6 +275,7 @@ export function useBookmarkViewer() {
     activeSort,
     activeView,
     darkMode,
+    zoom,
   ]);
 
   const getViewportWidth = () => viewportRef.current?.clientWidth || window.innerWidth;
@@ -878,13 +890,17 @@ export function useBookmarkViewer() {
 
       if (viewport) viewport.scrollTop = 0;
 
+      const zoomOffset = zoomRef.current;
+      const mediaCols = clamp(engine.config.MEDIA_COLS - zoomOffset, 2, 6);
+      const cardCols = clamp(engine.config.CARD_COLS - zoomOffset, 1, 5);
+
       const layout = buildMasonryLayout(
         bookmarks,
         view,
         getViewportWidth(),
         getViewportHeight(),
-        engine.config.MEDIA_COLS,
-        engine.config.CARD_COLS,
+        mediaCols,
+        cardCols,
         engine.config.GAP
       );
 
@@ -1475,6 +1491,62 @@ export function useBookmarkViewer() {
     ]
   );
 
+  const applyZoom = useCallback(
+    (delta: number) => {
+      const nextZoom = clamp(zoomRef.current + delta, ZOOM_MIN, ZOOM_MAX);
+      if (nextZoom === zoomRef.current) return;
+      zoomRef.current = nextZoom;
+      setZoom(nextZoom);
+      viewportRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+      refreshDisplay(
+        allBookmarks,
+        activeFolder,
+        activeSearch,
+        activeFacetType,
+        activeFacetValue,
+        activeSort,
+        activeView,
+        true
+      );
+    },
+    [
+      activeFacetType,
+      activeFacetValue,
+      activeFolder,
+      activeSearch,
+      activeSort,
+      activeView,
+      allBookmarks,
+      refreshDisplay,
+    ]
+  );
+
+  const resetZoom = useCallback(() => {
+    if (zoomRef.current === 0) return;
+    zoomRef.current = 0;
+    setZoom(0);
+    viewportRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    refreshDisplay(
+      allBookmarks,
+      activeFolder,
+      activeSearch,
+      activeFacetType,
+      activeFacetValue,
+      activeSort,
+      activeView,
+      true
+    );
+  }, [
+    activeFacetType,
+    activeFacetValue,
+    activeFolder,
+    activeSearch,
+    activeSort,
+    activeView,
+    allBookmarks,
+    refreshDisplay,
+  ]);
+
   const applyFacet = useCallback(
     (type: FacetType, value: string) => {
       if (activeFacetType === type && activeFacetValue === value) return;
@@ -1505,8 +1577,9 @@ export function useBookmarkViewer() {
   );
 
   useEffect(() => {
+    if (!loaded) return;
     saveState();
-  }, [saveState]);
+  }, [saveState, loaded]);
 
   useEffect(() => {
     document.body.classList.toggle("dark-mode", darkMode);
@@ -1538,6 +1611,11 @@ export function useBookmarkViewer() {
           if (restored.activeSearch) setActiveSearch(restored.activeSearch);
           if (restored.activeFacetType) setActiveFacetType(restored.activeFacetType);
           if (restored.activeFacetValue) setActiveFacetValue(restored.activeFacetValue);
+          if (typeof restored.activeZoom === "number") {
+            const restoredZoom = clamp(Math.round(restored.activeZoom), ZOOM_MIN, ZOOM_MAX);
+            zoomRef.current = restoredZoom;
+            setZoom(restoredZoom);
+          }
           engineRef.current.feedScrollY = 0;
           if (restored.feedScrollY) {
             delete restored.feedScrollY;
@@ -1743,6 +1821,18 @@ export function useBookmarkViewer() {
 
     const onWheel = (event: WheelEvent) => {
       if (engine.lightboxOpen) return;
+
+      if (event.ctrlKey) {
+        event.preventDefault();
+        engine.zoomWheelAccumulator += event.deltaY;
+        const steps = Math.trunc(engine.zoomWheelAccumulator / ZOOM_WHEEL_THRESHOLD);
+        if (steps !== 0) {
+          engine.zoomWheelAccumulator -= steps * ZOOM_WHEEL_THRESHOLD;
+          applyZoom(-steps);
+        }
+        return;
+      }
+
       if (isVerticalFeedView(activeView)) return;
       event.preventDefault();
       engine.targetOffset.y += event.deltaY;
@@ -1907,6 +1997,7 @@ export function useBookmarkViewer() {
     activeSort,
     activeView,
     allBookmarks,
+    applyZoom,
     closeLightbox,
     displayBookmarks,
     hideScrubberPreview,
@@ -2050,6 +2141,16 @@ export function useBookmarkViewer() {
       displayBookmarks,
       activeFolder,
       activeView,
+      zoom,
+      zoomPercent: (() => {
+        const engine = engineRef.current;
+        const baseCols = activeView === "card" ? engine.config.CARD_COLS : engine.config.MEDIA_COLS;
+        const effCols =
+          activeView === "card"
+            ? clamp(baseCols - zoom, 1, 5)
+            : clamp(baseCols - zoom, 2, 6);
+        return Math.round((baseCols / effCols) * 100);
+      })(),
       activeSort,
       activeSearch,
       activeFacetType,
@@ -2137,6 +2238,8 @@ export function useBookmarkViewer() {
       },
       applyFilter,
       applyView,
+      applyZoom,
+      resetZoom,
       applyFacet,
       closeLightbox,
       clearContextMenu: () => {
