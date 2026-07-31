@@ -5,6 +5,11 @@ import { animate } from "motion";
 import type { AnimationOptions, DOMKeyframesDefinition } from "motion";
 import { iconPath, sortIcons } from "@/lib/icons";
 import {
+  advanceGeometry,
+  makeGeometryState,
+  type GeometryState,
+} from "@/lib/geometry";
+import {
   DEFAULT_SORT,
   STORAGE_KEY,
   buildMasonryLayout,
@@ -214,6 +219,10 @@ export function useBookmarkViewer() {
     lightboxAnimating: false,
     lightboxOpen: false,
     needsPostLightboxRelayout: false,
+    geometry: new Map<string, GeometryState>(),
+    transitionRaf: null as number | null,
+    transitionBaselined: false,
+    animating: false,
     cameraOffset: { x: 0, y: 0 },
     targetOffset: { x: 0, y: 0 },
     isDragging: false,
@@ -228,6 +237,7 @@ export function useBookmarkViewer() {
       easingFactor: 0.18,
       POOL_SIZE: isLowSpecDevice() ? 260 : 420,
       BUFFER: isLowSpecDevice() ? 320 : 600,
+      INTERPOLATE: !isLowSpecDevice(),
     },
   });
 
@@ -357,14 +367,31 @@ export function useBookmarkViewer() {
     const visibleThisFrame = new Set<string>();
 
     for (const item of engine.layoutItems) {
-      const screenX = feedModeActive ? item.x : item.x - cameraX;
-      const screenY = feedModeActive ? item.y : item.y - cameraY;
+      // Geometry cache is authoritative; pooled nodes are disposable surfaces.
+      let g = engine.geometry.get(item.bookmark.id);
+      if (!g) {
+        const rect = { x: item.x, y: item.y, w: item.w, h: item.h };
+        g = { prev: rect, target: rect, current: rect, start: 0, duration: 0, done: true };
+        engine.geometry.set(item.bookmark.id, g);
+      }
+
+      const curX = g.current.x;
+      const curY = g.current.y;
+      const curW = g.current.w;
+      const curH = g.current.h;
+
+      // Visible at the interpolated position under the current camera…
+      const screenX = feedModeActive ? curX : curX - cameraX;
+      const screenY = feedModeActive ? curY : curY - cameraY;
       const visibleAtCamera = feedModeActive
-        ? item.y + item.h >= cameraY - buffer && item.y <= cameraY + viewportHeight + buffer
-        : screenX + item.w >= -buffer &&
+        ? curY + curH >= cameraY - buffer && curY <= cameraY + viewportHeight + buffer
+        : screenX + curW >= -buffer &&
           screenX <= viewportWidth + buffer &&
-          screenY + item.h >= -buffer &&
+          screenY + curH >= -buffer &&
           screenY <= viewportHeight + buffer;
+      // …or visible at the target layout, so items leaving the window keep
+      // interpolating until virtualization removes them and incoming items
+      // appear already positioned at their interpolated state.
       const visibleAtTarget = feedModeActive
         ? item.y + item.h >= targetY - buffer && item.y <= targetY + viewportHeight + buffer
         : item.x - engine.targetOffset.x + item.w >= -buffer &&
@@ -374,11 +401,20 @@ export function useBookmarkViewer() {
 
       if (!visibleAtCamera && !visibleAtTarget) continue;
 
-      visibleThisFrame.add(item.key);
-      const existing = engine.activeMap.get(item.key);
+      const id = item.bookmark.id;
+      visibleThisFrame.add(id);
+      const existing = engine.activeMap.get(id);
       if (existing) {
         if (existing.poolEl !== lightboxElement) {
           existing.poolEl.style.transform = `translate3d(${screenX}px, ${screenY}px, 0)`;
+        }
+        // Width/height only settle once interpolation completes; during motion
+        // the card keeps its previous size and scales visually via transform.
+        if (g.done) {
+          const tw = `${Math.round(item.w)}px`;
+          const th = `${Math.round(item.h)}px`;
+          if (existing.poolEl.style.width !== tw) existing.poolEl.style.width = tw;
+          if (existing.poolEl.style.height !== th) existing.poolEl.style.height = th;
         }
         existing.screenX = screenX;
         existing.screenY = screenY;
@@ -387,12 +423,12 @@ export function useBookmarkViewer() {
         if (!poolElement) continue;
 
         poolElement.style.display = "";
-        poolElement.style.width = `${item.w}px`;
-        poolElement.style.height = `${item.h}px`;
+        poolElement.style.width = `${Math.round(curW)}px`;
+        poolElement.style.height = `${Math.round(curH)}px`;
         poolElement.style.transform = `translate3d(${screenX}px, ${screenY}px, 0)`;
         renderCardContent(poolElement, item.bookmark, item, view);
         engine.elToBookmark.set(poolElement, item.bookmark);
-        engine.activeMap.set(item.key, {
+        engine.activeMap.set(id, {
           poolEl: poolElement,
           layoutItem: item,
           screenX,
@@ -421,6 +457,64 @@ export function useBookmarkViewer() {
       renderVisibleItems();
     });
   }, [renderVisibleItems]);
+
+  // Feed mode has no camera loop, so layout transitions need their own ticker.
+  // Only geometry for items currently in the render window is advanced, keeping
+  // per-frame cost proportional to visible items rather than total bookmarks.
+  const startTransition = useCallback(() => {
+    const engine = engineRef.current;
+    if (engine.transitionRaf !== null) return;
+    engine.animating = true;
+    engine.transitionBaselined = false;
+    const tick = () => {
+      if (!viewportRef.current) {
+        engine.transitionRaf = null;
+        engine.animating = false;
+        return;
+      }
+      const now = performance.now();
+      // Anchor the tween at the first rendered frame rather than at seeding:
+      // a late first frame (heavy commit, dialog teardown) must not collapse
+      // the eased curve into a snap.
+      if (!engine.transitionBaselined) {
+        engine.transitionBaselined = true;
+        for (const g of engine.geometry.values()) {
+          if (!g.done) g.start = now;
+        }
+      }
+      let remaining = 0;
+      for (const [id, g] of engine.geometry) {
+        if (!engine.activeMap.has(id)) continue;
+        if (!g.done && !advanceGeometry(g, now)) remaining += 1;
+      }
+      renderVisibleItems();
+      if (remaining > 0) {
+        engine.transitionRaf = requestAnimationFrame(tick);
+      } else {
+        engine.transitionRaf = null;
+        engine.animating = false;
+        // Settle items that never entered the render window so they render at
+        // their final positions (and correct sizes) once scrolled into view.
+        for (const g of engine.geometry.values()) {
+          if (!g.done) {
+            g.current = { ...g.target };
+            g.done = true;
+          }
+        }
+        renderVisibleItems();
+      }
+    };
+    engine.transitionRaf = requestAnimationFrame(tick);
+  }, [renderVisibleItems]);
+
+  const stopTransition = useCallback(() => {
+    const engine = engineRef.current;
+    if (engine.transitionRaf !== null) {
+      cancelAnimationFrame(engine.transitionRaf);
+      engine.transitionRaf = null;
+    }
+    engine.animating = false;
+  }, []);
 
   const buildScrubberData = useCallback((bookmarksList: Bookmark[]) => {
     const engine = engineRef.current;
@@ -763,16 +857,23 @@ export function useBookmarkViewer() {
   }, [activeView]);
 
   const resetViewportAndRebuild = useCallback(
-    (bookmarks: Bookmark[], view: ViewMode) => {
+    (bookmarks: Bookmark[], view: ViewMode, animate = true) => {
       const engine = engineRef.current;
       const viewport = viewportRef.current;
       engine.cameraOffset = { x: 0, y: 0 };
       engine.targetOffset = { x: 0, y: 0 };
 
-      for (const [visKey, entry] of engine.activeMap) {
-        entry.poolEl.style.display = "none";
-        engine.freePool.push(entry.poolEl);
-        engine.activeMap.delete(visKey);
+      if (engine.transitionRaf !== null) {
+        cancelAnimationFrame(engine.transitionRaf);
+        engine.transitionRaf = null;
+      }
+
+      // Re-base rule: snap every cached geometry to its current interpolated
+      // position so an interrupted transition never jumps back to its start.
+      const now = performance.now();
+      for (const g of engine.geometry.values()) {
+        advanceGeometry(g, now);
+        g.prev = g.current;
       }
 
       if (viewport) viewport.scrollTop = 0;
@@ -793,6 +894,36 @@ export function useBookmarkViewer() {
       engine.maxColHeight = layout.maxColHeight;
       engine.contentBounds = layout.contentBounds;
 
+      const shouldAnimate = animate && engine.config.INTERPOLATE;
+      const seedNow = performance.now();
+      const liveIds = new Set<string>();
+
+      for (const item of engine.layoutItems) {
+        const target = { x: item.x, y: item.y, w: item.w, h: item.h };
+        liveIds.add(item.bookmark.id);
+        if (shouldAnimate) {
+          const existing = engine.geometry.get(item.bookmark.id);
+          const prev = existing ? existing.current : target;
+          engine.geometry.set(
+            item.bookmark.id,
+            makeGeometryState(prev, target, seedNow)
+          );
+        } else {
+          engine.geometry.set(item.bookmark.id, {
+            prev: target,
+            target,
+            current: { ...target },
+            start: seedNow,
+            duration: 0,
+            done: true,
+          });
+        }
+      }
+
+      for (const [id] of engine.geometry) {
+        if (!liveIds.has(id)) engine.geometry.delete(id);
+      }
+
       updateViewportMode();
       buildScrubberData(bookmarks);
       setScrubberVisible(isVerticalFeedView(view) && engine.scrubberData.length > 1);
@@ -807,9 +938,21 @@ export function useBookmarkViewer() {
         engine.contentBounds.minY,
         engine.contentBounds.maxY
       );
+
+      if (shouldAnimate) {
+        startTransition();
+      } else {
+        stopTransition();
+      }
       renderVisibleItems();
     },
-    [buildScrubberData, renderVisibleItems, updateViewportMode]
+    [
+      buildScrubberData,
+      renderVisibleItems,
+      startTransition,
+      stopTransition,
+      updateViewportMode,
+    ]
   );
 
   const createPool = useCallback(() => {
@@ -857,7 +1000,7 @@ export function useBookmarkViewer() {
       facetValue: string,
       sort: SortConfig,
       view: ViewMode,
-      instant?: boolean
+      animate = true
     ) => {
       const filtered = getFilteredBookmarks(
         bookmarks,
@@ -869,17 +1012,8 @@ export function useBookmarkViewer() {
         view
       );
 
-      const doRefresh = () => {
-        setDisplayBookmarks(filtered);
-        resetViewportAndRebuild(filtered, view);
-      };
-
-      if (instant) {
-        doRefresh();
-        return;
-      }
-
-      doRefresh();
+      setDisplayBookmarks(filtered);
+      resetViewportAndRebuild(filtered, view, animate);
     },
     [resetViewportAndRebuild]
   );
@@ -1223,7 +1357,8 @@ export function useBookmarkViewer() {
       activeFacetType,
       activeFacetValue,
       activeSort,
-      activeView
+      activeView,
+      false
     );
   }, [
     activeFacetType,
@@ -1296,7 +1431,8 @@ export function useBookmarkViewer() {
         activeFacetType,
         activeFacetValue,
         activeSort,
-        activeView
+        activeView,
+        true
       );
     },
     [
@@ -1323,7 +1459,8 @@ export function useBookmarkViewer() {
         activeFacetType,
         activeFacetValue,
         activeSort,
-        view
+        view,
+        false
       );
     },
     [
@@ -1351,7 +1488,8 @@ export function useBookmarkViewer() {
         type,
         value,
         activeSort,
-        activeView
+        activeView,
+        true
       );
     },
     [
@@ -1456,7 +1594,7 @@ export function useBookmarkViewer() {
         );
         setDisplayBookmarks(filtered);
         createPool();
-        resetViewportAndRebuild(filtered, view);
+        resetViewportAndRebuild(filtered, view, false);
 
         const restoredScroll = engineRef.current.feedScrollY;
         if (restoredScroll > 0 && isVerticalFeedView(view)) {
@@ -1633,7 +1771,7 @@ export function useBookmarkViewer() {
       const viewportWidth = getViewportWidth();
       engine.config.MEDIA_COLS = viewportWidth < 720 ? 2 : viewportWidth < 1100 ? 3 : 5;
       engine.config.CARD_COLS = viewportWidth < 720 ? 1 : viewportWidth < 1200 ? 3 : 4;
-      resetViewportAndRebuild(displayBookmarks, activeView);
+      resetViewportAndRebuild(displayBookmarks, activeView, true);
 
       requestAnimationFrame(() => {
         const nextViewport = viewportRef.current;
@@ -1704,13 +1842,23 @@ export function useBookmarkViewer() {
     let animationFrame = 0;
     const animateLoop = () => {
       if (!isVerticalFeedView(activeView)) {
+        let moved = false;
+        const now = performance.now();
+        for (const [id, g] of engine.geometry) {
+          if (!engine.activeMap.has(id)) continue;
+          if (!g.done) {
+            advanceGeometry(g, now);
+            moved = true;
+          }
+        }
         const deltaX = engine.targetOffset.x - engine.cameraOffset.x;
         const deltaY = engine.targetOffset.y - engine.cameraOffset.y;
         if (Math.abs(deltaX) > 0.01 || Math.abs(deltaY) > 0.01) {
           engine.cameraOffset.x += deltaX * engine.config.easingFactor;
           engine.cameraOffset.y += deltaY * engine.config.easingFactor;
-          renderVisibleItems();
+          moved = true;
         }
+        if (moved) renderVisibleItems();
       }
       animationFrame = requestAnimationFrame(animateLoop);
     };
@@ -1949,7 +2097,7 @@ export function useBookmarkViewer() {
           activeFacetValue,
           activeSort,
           activeView,
-          instant
+          false
         );
       },
       clearSearch: () => {
@@ -1961,7 +2109,8 @@ export function useBookmarkViewer() {
           activeFacetType,
           activeFacetValue,
           activeSort,
-          activeView
+          activeView,
+          false
         );
       },
       resetFilters: () => {
@@ -1977,7 +2126,8 @@ export function useBookmarkViewer() {
           "all",
           "All bookmarks",
           DEFAULT_SORT,
-          activeView
+          activeView,
+          true
         );
       },
       setDarkMode: (value: boolean) => {
