@@ -21,7 +21,6 @@ import {
 import { useDialKit } from "dialkit";
 import { Badge } from "@/components/reui/badge";
 import SyncSettingsDialog from "@/components/ui/sync-settings-dialog";
-import { apiFetch } from "@/lib/client-api";
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { useMediaQuery } from "@/hooks/use-media-query";
@@ -79,26 +78,6 @@ function ToolbarRegion({
   });
 
   const [syncSettingsOpen, setSyncSettingsOpen] = useState(false);
-  const [cookieLabel, setCookieLabel] = useState("");
-
-  useEffect(() => {
-    if (!syncSettingsOpen) {
-      apiFetch("/api/cookies")
-        .then((r) => r.ok ? r.json() : null)
-        .then((d) => {
-          if (!d) return;
-          const m = d.cookieMode;
-          if (m === "auto:firefox") setCookieLabel("(auto: Firefox)");
-          else if (m === "auto:edge") setCookieLabel("(auto: Edge)");
-          else if (m === "auto:chrome") setCookieLabel("(auto: Chrome)");
-          else if (m === "auto:brave") setCookieLabel("(auto: Brave)");
-          else if (m === "manual-runtime") setCookieLabel("(manual)");
-          else if (m === "manual-firefox") setCookieLabel("(env)");
-          else setCookieLabel("");
-        })
-        .catch(() => {});
-    }
-  }, [syncSettingsOpen]);
 
   const moreParams = useDialKit("More Popover", {
     popoverPaddingX: [4, 0, 24, 1],
@@ -263,8 +242,9 @@ function ToolbarRegion({
               <PopoverContent
                 align="end"
                 sideOffset={6}
-                className="w-44 border border-border shadow-lg"
+                className="overlay-pop w-44 border-0"
                 style={{
+                  border: "none",
                   borderRadius: 9,
                   padding: `${moreParams.popoverPaddingY as number}px ${moreParams.popoverPaddingX as number}px`,
                   background: moreParams.popoverBg as string,
@@ -289,7 +269,7 @@ function ToolbarRegion({
                         </ShineText>
                       </span>
                     ) : (
-                      <span className="truncate min-w-0">{state.syncStatusText}{cookieLabel ? <span className="ml-1 shrink-0 opacity-60">{cookieLabel}</span> : null}</span>
+                      <span className="truncate min-w-0">{state.syncStatusText}</span>
                     )}
                   </div>
                   <button
@@ -463,23 +443,6 @@ function ToolbarRegion({
       <SyncSettingsDialog
         open={syncSettingsOpen}
         onOpenChange={setSyncSettingsOpen}
-        onSaved={() => {
-          setCookieLabel("");
-          apiFetch("/api/cookies")
-            .then((r) => r.ok ? r.json() : null)
-            .then((d) => {
-              if (!d) return;
-              const m = d.cookieMode;
-              if (m === "auto:firefox") setCookieLabel("(auto: Firefox)");
-              else if (m === "auto:edge") setCookieLabel("(auto: Edge)");
-              else if (m === "auto:chrome") setCookieLabel("(auto: Chrome)");
-              else if (m === "auto:brave") setCookieLabel("(auto: Brave)");
-              else if (m === "manual-runtime") setCookieLabel("(manual)");
-              else if (m === "manual-firefox") setCookieLabel("(env)");
-              else setCookieLabel("");
-            })
-            .catch(() => {});
-        }}
       />
     </div>
   );
@@ -1158,7 +1121,7 @@ function SearchCommand({
            {prefix === "domain" && (
              <div className="flex flex-col" style={{ gap: ig }}>
                {filteredDomains.length === 0 && (
-                 <div className="py-6 text-center text-sm text-muted-foreground">{prefixQuery ? `No domains matching "${prefixQuery}"` : "No classified domains — run domain classification first"}</div>
+                 <div className="py-6 text-center text-sm text-muted-foreground">{prefixQuery ? `No domains matching "${prefixQuery}"` : "No classified domains yet. Run domain classification first."}</div>
                )}
                {filteredDomains.map((domain) => (
                  <button
@@ -1254,7 +1217,7 @@ function SearchCommand({
                 {bookmarkResults.length === 0 ? (
                   <div className="py-6 text-center text-sm text-muted-foreground">
                     {query.trim() ? (
-                      <span>No results for &quot;{query}&quot; — try <span className="text-foreground/70" style={monoStyle}>@author</span>, <span className="text-foreground/70" style={monoStyle}>#category</span>, <span className="text-foreground/70" style={monoStyle}>domain:</span>, or <span className="text-foreground/70" style={monoStyle}>sites:</span></span>
+                      <span>No results for &quot;{query}&quot;. Try <span className="text-foreground/70" style={monoStyle}>@author</span>, <span className="text-foreground/70" style={monoStyle}>#category</span>, <span className="text-foreground/70" style={monoStyle}>domain:</span>, or <span className="text-foreground/70" style={monoStyle}>sites:</span></span>
                     ) : (
                       <span>No bookmarks found</span>
                     )}
@@ -1417,7 +1380,6 @@ export default function BookmarksViewer() {
             borderRadius: ctx.popupRadius as number,
             padding: `${ctx.popupPaddingY as number}px ${ctx.popupPaddingX as number}px`,
             border: "none",
-            boxShadow: "none",
             ["--ctx-hover-bg" as string]: state.darkMode ? ctx.hoverBgDark as string : ctx.hoverBg as string,
             ["--ctx-hover-text" as string]: undefined,
           }}

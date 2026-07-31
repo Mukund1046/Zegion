@@ -524,7 +524,7 @@ function SortPicker({
               <PopoverContent
                 align="start"
                 sideOffset={8}
-                className="min-w-[180px] w-auto border-0 shadow-lg"
+                className="overlay-pop min-w-[180px] w-auto border-0"
                 style={{
                   backgroundColor: segBg,
                   borderRadius: `${fieldPopoverCornerRadius}px`,
@@ -664,7 +664,7 @@ function SortPicker({
         <PopoverContent
           align="end"
           sideOffset={6}
-          className="min-w-[160px] border-0 shadow-lg"
+          className="overlay-pop min-w-[160px] border-0"
           style={{
             backgroundColor: segBg,
             borderRadius: `${addPopoverCornerRadius}px`,

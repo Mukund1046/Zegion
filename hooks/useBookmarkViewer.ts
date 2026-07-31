@@ -1272,7 +1272,7 @@ export function useBookmarkViewer() {
         setSyncStatusText(
           payload.warning ? `${successLabel} • folder refresh needs review` : successLabel
         );
-        setSyncStatusTone(payload.warning ? "working" : "success");
+        setSyncStatusTone("success");
       } catch (error) {
         setSyncStatusText(error instanceof Error ? error.message : "Action failed");
         setSyncStatusTone("error");

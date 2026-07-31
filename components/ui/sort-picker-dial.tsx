@@ -240,7 +240,7 @@ export default function SortPickerDial({
           align="end"
           sideOffset={8}
           avoidCollisions
-          className="border-0 shadow-lg"
+          className="overlay-pop border-0"
           style={{
             borderRadius: mobilePopover.cornerRadius,
             backgroundColor: segBg,
