@@ -6,6 +6,7 @@ import type { AnimationOptions, DOMKeyframesDefinition } from "motion";
 import { iconPath, sortIcons } from "@/lib/icons";
 import {
   advanceGeometry,
+  advanceSpring,
   makeGeometryState,
   type GeometryState,
 } from "@/lib/geometry";
@@ -126,6 +127,21 @@ const getViewportSize = () => {
   };
 };
 
+const __MONTHS_LONG = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+const __MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const __WEEKDAYS_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+const __formatLongDate = (d: Date) =>
+  `${__MONTHS_LONG[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+
+const __formatShortDay = (d: Date) =>
+  `${__WEEKDAYS_SHORT[d.getDay()]}, ${__MONTHS_SHORT[d.getMonth()]} ${d.getDate()}`;
+
+const __localDayKey = (d: Date) => d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+
 function renderScrubberPreviewCardImpl(marker: ScrubberMarkerData) {
   const weekLabel = marker.weekStart
     ? new Date(marker.weekStart).toLocaleDateString("en-US", { month: "short", day: "numeric" })
@@ -220,7 +236,15 @@ export function useBookmarkViewer() {
     freePool: [] as HTMLDivElement[],
     activeMap: new Map<
       string,
-      { poolEl: HTMLDivElement; layoutItem: LayoutItem; screenX: number; screenY: number }
+      {
+        poolEl: HTMLDivElement;
+        layoutItem: LayoutItem;
+        screenX: number;
+        screenY: number;
+        contentW: number;
+        contentH: number;
+        contentView: ViewMode;
+      }
     >(),
     elToBookmark: new WeakMap<HTMLDivElement, Bookmark>(),
     lightboxClone: null as HTMLDivElement | null,
@@ -230,9 +254,12 @@ export function useBookmarkViewer() {
     needsPostLightboxRelayout: false,
     geometry: new Map<string, GeometryState>(),
     transitionRaf: null as number | null,
-    transitionBaselined: false,
+    transitionLastT: 0,
     animating: false,
     zoomWheelAccumulator: 0,
+    zoomRebuildQueued: false,
+    viewportWidth: 0,
+    viewportHeight: 0,
     cameraOffset: { x: 0, y: 0 },
     targetOffset: { x: 0, y: 0 },
     isDragging: false,
@@ -278,9 +305,20 @@ export function useBookmarkViewer() {
     zoom,
   ]);
 
-  const getViewportWidth = () => viewportRef.current?.clientWidth || window.innerWidth;
-  const getViewportHeight = () =>
-    viewportRef.current?.clientHeight || window.innerHeight;
+  const getViewportWidth = () => {
+    const cached = engineRef.current.viewportWidth;
+    if (cached > 0) return cached;
+    const live = viewportRef.current?.clientWidth || window.innerWidth;
+    engineRef.current.viewportWidth = live;
+    return live;
+  };
+  const getViewportHeight = () => {
+    const cached = engineRef.current.viewportHeight;
+    if (cached > 0) return cached;
+    const live = viewportRef.current?.clientHeight || window.innerHeight;
+    engineRef.current.viewportHeight = live;
+    return live;
+  };
   const getScrollableDistance = () => {
     const viewport = viewportRef.current;
     if (!viewport) return 0;
@@ -383,7 +421,15 @@ export function useBookmarkViewer() {
       let g = engine.geometry.get(item.bookmark.id);
       if (!g) {
         const rect = { x: item.x, y: item.y, w: item.w, h: item.h };
-        g = { prev: rect, target: rect, current: rect, start: 0, duration: 0, done: true };
+        g = {
+          prev: rect,
+          target: rect,
+          current: rect,
+          velocity: { x: 0, y: 0, w: 0, h: 0 },
+          start: 0,
+          duration: 0,
+          done: true,
+        };
         engine.geometry.set(item.bookmark.id, g);
       }
 
@@ -418,15 +464,28 @@ export function useBookmarkViewer() {
       const existing = engine.activeMap.get(id);
       if (existing) {
         if (existing.poolEl !== lightboxElement) {
-          existing.poolEl.style.transform = `translate3d(${screenX}px, ${screenY}px, 0)`;
+          // Cards are laid out at their target size and scaled to the
+          // interpolated size via transform, so size changes glide smoothly
+          // instead of popping when the transition settles.
+          const sx = g.done ? 1 : g.current.w / item.w;
+          const sy = g.done ? 1 : g.current.h / item.h;
+          existing.poolEl.style.transform = `translate3d(${screenX}px, ${screenY}px, 0) scale(${sx}, ${sy})`;
         }
-        // Width/height only settle once interpolation completes; during motion
-        // the card keeps its previous size and scales visually via transform.
-        if (g.done) {
-          const tw = `${Math.round(item.w)}px`;
-          const th = `${Math.round(item.h)}px`;
-          if (existing.poolEl.style.width !== tw) existing.poolEl.style.width = tw;
-          if (existing.poolEl.style.height !== th) existing.poolEl.style.height = th;
+        const tw = `${Math.round(item.w)}px`;
+        const th = `${Math.round(item.h)}px`;
+        if (existing.poolEl.style.width !== tw) existing.poolEl.style.width = tw;
+        if (existing.poolEl.style.height !== th) existing.poolEl.style.height = th;
+        // Content is sized from the layout item; re-render it when the target
+        // size or view changes so it fills the card once the transition settles.
+        if (
+          view !== existing.contentView ||
+          item.w !== existing.contentW ||
+          item.h !== existing.contentH
+        ) {
+          existing.contentView = view;
+          existing.contentW = item.w;
+          existing.contentH = item.h;
+          renderCardContent(existing.poolEl, item.bookmark, item, view);
         }
         existing.screenX = screenX;
         existing.screenY = screenY;
@@ -435,9 +494,11 @@ export function useBookmarkViewer() {
         if (!poolElement) continue;
 
         poolElement.style.display = "";
-        poolElement.style.width = `${Math.round(curW)}px`;
-        poolElement.style.height = `${Math.round(curH)}px`;
-        poolElement.style.transform = `translate3d(${screenX}px, ${screenY}px, 0)`;
+        poolElement.style.width = `${Math.round(item.w)}px`;
+        poolElement.style.height = `${Math.round(item.h)}px`;
+        const nsx = g.done ? 1 : g.current.w / item.w;
+        const nsy = g.done ? 1 : g.current.h / item.h;
+        poolElement.style.transform = `translate3d(${screenX}px, ${screenY}px, 0) scale(${nsx}, ${nsy})`;
         renderCardContent(poolElement, item.bookmark, item, view);
         engine.elToBookmark.set(poolElement, item.bookmark);
         engine.activeMap.set(id, {
@@ -445,6 +506,9 @@ export function useBookmarkViewer() {
           layoutItem: item,
           screenX,
           screenY,
+          contentW: item.w,
+          contentH: item.h,
+          contentView: view,
         });
       }
     }
@@ -471,13 +535,15 @@ export function useBookmarkViewer() {
   }, [renderVisibleItems]);
 
   // Feed mode has no camera loop, so layout transitions need their own ticker.
-  // Only geometry for items currently in the render window is advanced, keeping
-  // per-frame cost proportional to visible items rather than total bookmarks.
+  // Geometry is advanced with a critically damped spring so retargets (rapid
+  // zoom clicks, interrupted tweens) keep current value and velocity instead
+  // of restarting from rest. Only items currently in the render window are
+  // advanced, keeping per-frame cost proportional to visible items.
   const startTransition = useCallback(() => {
     const engine = engineRef.current;
     if (engine.transitionRaf !== null) return;
     engine.animating = true;
-    engine.transitionBaselined = false;
+    engine.transitionLastT = performance.now();
     const tick = () => {
       if (!viewportRef.current) {
         engine.transitionRaf = null;
@@ -485,19 +551,12 @@ export function useBookmarkViewer() {
         return;
       }
       const now = performance.now();
-      // Anchor the tween at the first rendered frame rather than at seeding:
-      // a late first frame (heavy commit, dialog teardown) must not collapse
-      // the eased curve into a snap.
-      if (!engine.transitionBaselined) {
-        engine.transitionBaselined = true;
-        for (const g of engine.geometry.values()) {
-          if (!g.done) g.start = now;
-        }
-      }
+      const dt = Math.min(Math.max(now - engine.transitionLastT, 0), 50);
+      engine.transitionLastT = now;
       let remaining = 0;
       for (const [id, g] of engine.geometry) {
         if (!engine.activeMap.has(id)) continue;
-        if (!g.done && !advanceGeometry(g, now)) remaining += 1;
+        if (!g.done && !advanceSpring(g, dt)) remaining += 1;
       }
       renderVisibleItems();
       if (remaining > 0) {
@@ -541,11 +600,12 @@ export function useBookmarkViewer() {
       return;
     }
 
-    const sorted = [...bookmarksList].sort(
-      (a, b) => new Date(a.postedAt).getTime() - new Date(b.postedAt).getTime()
-    );
+    const sortedWithMs = bookmarksList
+      .map((bookmark) => ({ bookmark, ms: new Date(bookmark.postedAt).getTime() }))
+      .sort((a, b) => a.ms - b.ms);
+    const sorted = sortedWithMs.map((entry) => entry.bookmark);
 
-    const earliestMs = new Date(sorted[0].postedAt).getTime();
+    const earliestMs = sortedWithMs[0].ms;
     const today = new Date();
     today.setHours(23, 59, 59, 999);
     const todayMs = today.getTime();
@@ -565,8 +625,8 @@ export function useBookmarkViewer() {
     }
 
     let wi = 0;
-    for (const bm of sorted) {
-      const bmMs = new Date(bm.postedAt).getTime();
+    for (let si = 0; si < sortedWithMs.length; si++) {
+      const { bookmark: bm, ms: bmMs } = sortedWithMs[si];
       while (wi < weeks.length - 1 && bmMs >= weeks[wi + 1].start.getTime()) {
         wi++;
       }
@@ -588,11 +648,7 @@ export function useBookmarkViewer() {
       if (week.bookmarks.length === 0) continue;
       const firstBookmark = week.bookmarks[0];
       const firstItem = layoutMap.get(firstBookmark.id)
-      const weekLabel = week.start.toLocaleDateString("en-US", {
-        month: "long",
-        day: "numeric",
-        year: "numeric",
-      });
+      const weekLabel = __formatLongDate(week.start);
       const weekMs = week.start.getTime() - earliestMs;
       const progress = weekMs / totalMs;
       markers.push({
@@ -604,9 +660,9 @@ export function useBookmarkViewer() {
         weekCount: week.bookmarks.length,
       });
 
-      const dayGroups = new Map<string, Bookmark[]>();
+      const dayGroups = new Map<number, Bookmark[]>();
       for (const bm of week.bookmarks) {
-        const dayKey = new Date(bm.postedAt).toDateString();
+        const dayKey = __localDayKey(new Date(bm.postedAt));
         if (!dayGroups.has(dayKey)) dayGroups.set(dayKey, []);
         dayGroups.get(dayKey)!.push(bm);
       }
@@ -615,11 +671,7 @@ export function useBookmarkViewer() {
       for (const [, dayBookmarks] of dayGroups) {
         const firstDayBm = dayBookmarks[0];
         const firstDayItem = layoutMap.get(firstDayBm.id);
-        const dayLabel = new Date(firstDayBm.postedAt).toLocaleDateString("en-US", {
-          weekday: "short",
-          month: "short",
-          day: "numeric",
-        });
+        const dayLabel = __formatShortDay(new Date(firstDayBm.postedAt));
         const dayAnchor: ScrubberDayAnchor = {
           id: `scrubber-day-${dayAnchorsList.length}`,
           top: firstDayItem?.y ?? 0,
@@ -875,24 +927,11 @@ export function useBookmarkViewer() {
       engine.cameraOffset = { x: 0, y: 0 };
       engine.targetOffset = { x: 0, y: 0 };
 
-      if (engine.transitionRaf !== null) {
-        cancelAnimationFrame(engine.transitionRaf);
-        engine.transitionRaf = null;
-      }
-
-      // Re-base rule: snap every cached geometry to its current interpolated
-      // position so an interrupted transition never jumps back to its start.
-      const now = performance.now();
-      for (const g of engine.geometry.values()) {
-        advanceGeometry(g, now);
-        g.prev = g.current;
-      }
-
-      if (viewport) viewport.scrollTop = 0;
-
       const zoomOffset = zoomRef.current;
       const mediaCols = clamp(engine.config.MEDIA_COLS - zoomOffset, 2, 6);
       const cardCols = clamp(engine.config.CARD_COLS - zoomOffset, 1, 5);
+
+      if (viewport) viewport.scrollTop = 0;
 
       const layout = buildMasonryLayout(
         bookmarks,
@@ -917,18 +956,24 @@ export function useBookmarkViewer() {
       for (const item of engine.layoutItems) {
         const target = { x: item.x, y: item.y, w: item.w, h: item.h };
         liveIds.add(item.bookmark.id);
-        if (shouldAnimate) {
-          const existing = engine.geometry.get(item.bookmark.id);
-          const prev = existing ? existing.current : target;
+        const existing = engine.geometry.get(item.bookmark.id);
+        if (shouldAnimate && existing) {
+          // Retarget: keep current position and velocity, chase the new
+          // target. Rapid rebuilds splice smoothly instead of restarting.
+          existing.target = target;
+          existing.prev = { ...existing.current };
+          existing.done = false;
+        } else if (shouldAnimate) {
           engine.geometry.set(
             item.bookmark.id,
-            makeGeometryState(prev, target, seedNow)
+            makeGeometryState(target, target, seedNow)
           );
         } else {
           engine.geometry.set(item.bookmark.id, {
             prev: target,
             target,
             current: { ...target },
+            velocity: { x: 0, y: 0, w: 0, h: 0 },
             start: seedNow,
             duration: 0,
             done: true,
@@ -1491,61 +1536,38 @@ export function useBookmarkViewer() {
     ]
   );
 
+  // Pure-zoom rebuilds must not touch displayBookmarks: filters are unchanged,
+  // so re-setting state would churn the big effect (listener teardown/setup)
+  // on every click. Coalesce rapid clicks into one rebuild per frame; the
+  // spring retarget handles the rest.
+  const scheduleZoomRebuild = useCallback(() => {
+    const engine = engineRef.current;
+    if (engine.zoomRebuildQueued) return;
+    engine.zoomRebuildQueued = true;
+    requestAnimationFrame(() => {
+      engine.zoomRebuildQueued = false;
+      if (!loaded) return;
+      resetViewportAndRebuild(displayBookmarks, activeView, true);
+    });
+  }, [activeView, displayBookmarks, loaded, resetViewportAndRebuild]);
+
   const applyZoom = useCallback(
     (delta: number) => {
       const nextZoom = clamp(zoomRef.current + delta, ZOOM_MIN, ZOOM_MAX);
       if (nextZoom === zoomRef.current) return;
       zoomRef.current = nextZoom;
       setZoom(nextZoom);
-      viewportRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-      refreshDisplay(
-        allBookmarks,
-        activeFolder,
-        activeSearch,
-        activeFacetType,
-        activeFacetValue,
-        activeSort,
-        activeView,
-        true
-      );
+      scheduleZoomRebuild();
     },
-    [
-      activeFacetType,
-      activeFacetValue,
-      activeFolder,
-      activeSearch,
-      activeSort,
-      activeView,
-      allBookmarks,
-      refreshDisplay,
-    ]
+    [scheduleZoomRebuild]
   );
 
   const resetZoom = useCallback(() => {
     if (zoomRef.current === 0) return;
     zoomRef.current = 0;
     setZoom(0);
-    viewportRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-    refreshDisplay(
-      allBookmarks,
-      activeFolder,
-      activeSearch,
-      activeFacetType,
-      activeFacetValue,
-      activeSort,
-      activeView,
-      true
-    );
-  }, [
-    activeFacetType,
-    activeFacetValue,
-    activeFolder,
-    activeSearch,
-    activeSort,
-    activeView,
-    allBookmarks,
-    refreshDisplay,
-  ]);
+    scheduleZoomRebuild();
+  }, [scheduleZoomRebuild]);
 
   const applyFacet = useCallback(
     (type: FacetType, value: string) => {
@@ -1858,7 +1880,9 @@ export function useBookmarkViewer() {
 
       engine.config.POOL_SIZE = isLowSpecDevice() ? 260 : 420;
       engine.config.BUFFER = isLowSpecDevice() ? 320 : 600;
-      const viewportWidth = getViewportWidth();
+      engine.viewportWidth = viewportRef.current?.clientWidth || window.innerWidth;
+      engine.viewportHeight = viewportRef.current?.clientHeight || window.innerHeight;
+      const viewportWidth = engine.viewportWidth;
       engine.config.MEDIA_COLS = viewportWidth < 720 ? 2 : viewportWidth < 1100 ? 3 : 5;
       engine.config.CARD_COLS = viewportWidth < 720 ? 1 : viewportWidth < 1200 ? 3 : 4;
       resetViewportAndRebuild(displayBookmarks, activeView, true);

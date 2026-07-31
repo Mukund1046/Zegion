@@ -947,6 +947,7 @@ body.dark-mode .proximity-dash.is-active {
   background: var(--card);
   box-shadow: var(--shadow);
   border: 1px solid var(--border);
+  transform-origin: 0 0;
 }
 
 body.dark-mode .grid-item {
