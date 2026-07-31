@@ -3,7 +3,6 @@
 import Image from "next/image";
 import { AnimatePresence, motion } from "motion/react";
 import { SquircleClip } from "@/components/ui/squircle-clip";
-import SortPickerDial from "@/components/ui/sort-picker-dial";
 import { SmoothInput } from "@/components/ui/skiper-ui/skiper106";
 import ShineText from "@/components/ui/smoothui/shine-text";
 import { ThinkingOrb } from "thinking-orbs";
@@ -193,7 +192,7 @@ function ToolbarRegion({
                   </>
                 ) : (
                   <kbd
-                    className="inline-flex items-center gap-1 border border-border text-[10px] font-medium leading-none text-muted-foreground/60"
+                    className="inline-flex items-center gap-1 text-[10px] font-medium leading-none text-muted-foreground/60"
                     style={{
                       paddingLeft: btnParams.kbdPaddingX as number,
                       paddingRight: btnParams.kbdPaddingX as number,
@@ -574,6 +573,7 @@ function FeedRegion({
       </AnimatePresence>
       <div className="feed-bottom-bar">
         <motion.div
+          className="overlay-pop"
           animate={{ y: showBar ? 0 : 80, opacity: showBar ? 1 : 0 }}
           transition={{ type: "spring", stiffness: 520, damping: 38 }}
           style={{
@@ -583,8 +583,6 @@ function FeedRegion({
             padding: `${bar.paddingY as number}px ${bar.paddingX as number}px`,
             borderRadius: 12,
             background: "var(--card)",
-            border: "1px solid var(--border)",
-            boxShadow: "0 4px 16px rgba(0,0,0,0.1)",
           }}
         >
         <div
@@ -635,11 +633,6 @@ function FeedRegion({
             />
           </button>
         </div>
-        <SortPickerDial
-          value={state.activeSort}
-          onChange={(sort) => actions.setActiveSort(sort)}
-          mobile={mobile}
-        />
       </motion.div>
       </div>
     </div>

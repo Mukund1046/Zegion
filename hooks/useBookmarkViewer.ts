@@ -2003,18 +2003,6 @@ export function useBookmarkViewer() {
       setScrubberActive,
       setScrubberDragging,
       scrollToScrubberProgress,
-      setActiveSort: (sort: SortConfig) => {
-        setActiveSort(sort);
-        refreshDisplay(
-          allBookmarks,
-          activeFolder,
-          activeSearch,
-          activeFacetType,
-          activeFacetValue,
-          sort,
-          activeView
-        );
-      },
     },
     helpers: {
       iconPath,

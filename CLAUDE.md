@@ -40,7 +40,7 @@ Next.js API routes (/api/bookmarks, /api/status, /api/sync, /api/reindex)
 
 | Directory | Contents |
 |---|---|
-| `components/ui/` | Core components: `sort-picker.tsx`, `sort-picker-dial.tsx`, `squircle-clip.tsx` |
+| `components/ui/` | Core components: `squircle-clip.tsx`, `field.tsx`, `input.tsx`, `button.tsx` |
 | `components/animate-ui/` | Radix popover/dropdown-menu wrappers, highlight effect primitives |
 | `components/unlumen-ui/` | Sidebar component (`sidebar-001.tsx`) |
 | `components/sora-ui/` | Skeleton loading effects |

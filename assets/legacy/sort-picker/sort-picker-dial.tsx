@@ -167,6 +167,7 @@ export default function SortPickerDial({
       borderColor: string
     }
     AddPopover: {
+      minWidth: number
       cornerRadius: number
       cornerSmoothing: number
       paddingTop: number
@@ -183,6 +184,7 @@ export default function SortPickerDial({
       titlePaddingBottom: number
     }
     FieldPopover: {
+      minWidth: number
       cornerRadius: number
       cornerSmoothing: number
       paddingTop: number
@@ -320,6 +322,7 @@ export default function SortPickerDial({
           borderColor: values.Colors.borderColor,
         },
         AddPopover: {
+          minWidth: values.AddPopover.minWidth,
           cornerRadius: values.AddPopover.cornerRadius,
           cornerSmoothing: values.AddPopover.cornerSmoothing,
           paddingTop: values.AddPopover.paddingTop,
@@ -336,6 +339,7 @@ export default function SortPickerDial({
           titlePaddingBottom: values.AddPopover.titlePaddingBottom,
         },
         FieldPopover: {
+          minWidth: values.FieldPopover.minWidth,
           cornerRadius: values.FieldPopover.cornerRadius,
           cornerSmoothing: values.FieldPopover.cornerSmoothing,
           paddingTop: values.FieldPopover.paddingTop,

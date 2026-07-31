@@ -444,16 +444,15 @@ body.dark-mode .ui-icon {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 34px;
+  min-height: 35px;
   padding: 0 12px;
   border-radius: 10px;
-  border: 1px solid var(--border);
   background: #f4f4f9;
   color: var(--foreground);
   white-space: nowrap;
   cursor: pointer;
   font-weight: 600;
-  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease, opacity 0.18s ease;
+  transition: background 0.18s ease, color 0.18s ease, opacity 0.18s ease;
   flex-shrink: 0;
 }
 
@@ -743,7 +742,6 @@ body.dark-mode .folder-tab {
   display: inline-flex;
   border-radius: 8px;
   background: var(--muted);
-  border: 1px solid var(--border);
   flex-shrink: 0;
 }
 

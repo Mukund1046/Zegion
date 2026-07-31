@@ -60,6 +60,7 @@ export const sortPickerDialConfig = {
     borderColor: { type: "color" as const, default: "transparent" },
   },
   AddPopover: {
+    minWidth: r([120, 96, 320, 4]),
     cornerRadius: r([14, 0, 24, 1]),
     cornerSmoothing: r([1, 0, 1, 0.05]),
     paddingTop: r([4, 2, 16, 1]),
@@ -85,6 +86,7 @@ export const sortPickerDialConfig = {
     titlePaddingBottom: r([2, 2, 16, 1]),
   },
   FieldPopover: {
+    minWidth: r([120, 96, 320, 4]),
     cornerRadius: r([14, 0, 24, 1]),
     cornerSmoothing: r([1, 0, 1, 0.05]),
     paddingTop: r([4, 2, 16, 1]),

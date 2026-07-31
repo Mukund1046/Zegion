@@ -49,6 +49,7 @@ const ICON_SPRING = { stiffness: 200, damping: 28 } as SpringOptions
 const SWAY_SPRING = { stiffness: 200, damping: 24 } as SpringOptions
 
 type PopoverStyle = {
+  minWidth?: number
   cornerRadius?: number
   cornerSmoothing?: number
   paddingTop?: number
@@ -316,26 +317,21 @@ function SortPicker({
   const cornerSm = l?.cornerSmoothing ?? 1
 
   const addPopoverCornerRadius = ap?.cornerRadius ?? 14
+  const addPopoverMinWidth = ap?.minWidth ?? 160
   const addPopoverPaddingTop = ap?.paddingTop ?? 4
   const addPopoverPaddingLeft = ap?.paddingLeft ?? 4
   const addPopoverPaddingRight = ap?.paddingRight ?? 4
   const addPopoverPaddingBottom = ap?.paddingBottom ?? 4
-  const addPopoverTitleFontSize = ap?.titleFontSize ?? 12
-  const addPopoverTitleTransform = ap?.titleTransform ?? 'capitalize'
   const addPopoverHoverPaddingX = ap?.hoverPaddingX ?? 12
   const addPopoverHoverPaddingY = ap?.hoverPaddingY ?? 4
   const addPopoverHoverBorderRadius = ap?.hoverBorderRadius ?? 12
-  const addPopoverTitlePaddingX = ap?.titlePaddingX ?? 12
-  const addPopoverTitlePaddingTop = ap?.titlePaddingTop ?? 6
-  const addPopoverTitlePaddingBottom = ap?.titlePaddingBottom ?? 2
 
   const fieldPopoverCornerRadius = fp?.cornerRadius ?? 14
+  const fieldPopoverMinWidth = fp?.minWidth ?? 180
   const fieldPopoverPaddingTop = fp?.paddingTop ?? 4
   const fieldPopoverPaddingLeft = fp?.paddingLeft ?? 4
   const fieldPopoverPaddingRight = fp?.paddingRight ?? 4
   const fieldPopoverPaddingBottom = fp?.paddingBottom ?? 4
-  const fieldPopoverTitleFontSize = fp?.titleFontSize ?? 12
-  const fieldPopoverTitleTransform = fp?.titleTransform ?? 'capitalize'
   const fieldPopoverHoverPaddingX = fp?.hoverPaddingX ?? 12
   const fieldPopoverHoverPaddingY = fp?.hoverPaddingY ?? 4
   const fieldPopoverHoverBorderRadius = fp?.hoverBorderRadius ?? 12
@@ -524,20 +520,15 @@ function SortPicker({
               <PopoverContent
                 align="start"
                 sideOffset={8}
-                className="overlay-pop min-w-[180px] w-auto border-0"
+                className="overlay-pop w-auto border-0"
                 style={{
                   backgroundColor: segBg,
                   borderRadius: `${fieldPopoverCornerRadius}px`,
                   padding: `${fieldPopoverPaddingTop}px ${fieldPopoverPaddingRight}px ${fieldPopoverPaddingBottom}px ${fieldPopoverPaddingLeft}px`,
+                  minWidth: `${fieldPopoverMinWidth}px`,
                 }}
               >
                 <div className="flex flex-col gap-1" style={{ maxHeight: '320px' }}>
-                  <div
-                    className="flex-shrink-0 font-medium text-muted-foreground/60 tracking-wider"
-                    style={{ padding: `${fieldPopoverTitlePaddingTop}px ${fieldPopoverTitlePaddingX}px ${fieldPopoverTitlePaddingBottom}px`, fontSize: fieldPopoverTitleFontSize, textTransform: fieldPopoverTitleTransform }}
-                  >
-                    Select field
-                  </div>
                   <div className="flex-1 min-h-0 overflow-y-auto">
                     <div className="flex flex-col gap-1">
                       {SORT_FIELDS.map((f) => {
@@ -558,7 +549,7 @@ function SortPicker({
                                 setOpenFieldMenuIndex(null)
                               }
                             }}
-                            className="flex w-full items-center gap-2 text-left text-sm font-medium outline-none min-h-[36px] cursor-pointer transition-colors hover:bg-black/5 dark:hover:bg-white/10 focus-visible:bg-black/5 dark:focus-visible:bg-white/10"
+                            className="flex w-full items-center gap-2 text-left text-xs font-medium outline-none min-h-[36px] cursor-pointer transition-colors hover:bg-black/5 dark:hover:bg-white/10 focus-visible:bg-black/5 dark:focus-visible:bg-white/10"
                             style={{
                               padding: `${fieldPopoverHoverPaddingY}px ${fieldPopoverHoverPaddingX}px`,
                               borderRadius: `${fieldPopoverHoverBorderRadius}px`,
@@ -592,7 +583,7 @@ function SortPicker({
                                 setOpenFieldMenuIndex(null)
                               }
                             }}
-                            className="flex w-full items-center gap-2 text-left text-sm font-medium outline-none min-h-[36px] cursor-pointer transition-colors hover:bg-black/5 dark:hover:bg-white/10 focus-visible:bg-black/5 dark:focus-visible:bg-white/10"
+                            className="flex w-full items-center gap-2 text-left text-xs font-medium outline-none min-h-[36px] cursor-pointer transition-colors hover:bg-black/5 dark:hover:bg-white/10 focus-visible:bg-black/5 dark:focus-visible:bg-white/10"
                             style={{
                               padding: `${fieldPopoverHoverPaddingY}px ${fieldPopoverHoverPaddingX}px`,
                               borderRadius: `${fieldPopoverHoverBorderRadius}px`,
@@ -664,20 +655,15 @@ function SortPicker({
         <PopoverContent
           align="end"
           sideOffset={6}
-          className="overlay-pop min-w-[160px] border-0"
+          className="overlay-pop border-0"
           style={{
             backgroundColor: segBg,
             borderRadius: `${addPopoverCornerRadius}px`,
             padding: `${addPopoverPaddingTop}px ${addPopoverPaddingRight}px ${addPopoverPaddingBottom}px ${addPopoverPaddingLeft}px`,
+            minWidth: `${addPopoverMinWidth}px`,
           }}
         >
             <div className="flex flex-col gap-1">
-              <div
-                className="font-medium text-muted-foreground/60 tracking-wider"
-                style={{ padding: `${addPopoverTitlePaddingTop}px ${addPopoverTitlePaddingX}px ${addPopoverTitlePaddingBottom}px`, fontSize: addPopoverTitleFontSize, textTransform: addPopoverTitleTransform }}
-              >
-                Add sort
-              </div>
               {(() => {
                 const usedFields = new Set(localRules.map(r => r.field))
                 return SORT_FIELDS.map((f) => {
@@ -692,7 +678,7 @@ function SortPicker({
                         setIsEditing(true)
                       }}
                       disabled={isUsed}
-                      className="flex w-full items-center gap-2 text-left text-sm font-medium outline-none transition-colors hover:bg-black/5 dark:hover:bg-white/10 focus-visible:bg-black/5 dark:focus-visible:bg-white/10"
+                      className="flex w-full items-center gap-2 text-left text-xs font-medium outline-none transition-colors hover:bg-black/5 dark:hover:bg-white/10 focus-visible:bg-black/5 dark:focus-visible:bg-white/10"
                       style={{
                         padding: `${addPopoverHoverPaddingY}px ${addPopoverHoverPaddingX}px`,
                         borderRadius: `${addPopoverHoverBorderRadius}px`,
