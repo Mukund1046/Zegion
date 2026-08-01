@@ -20,6 +20,26 @@ const LONG_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
 
 export const STORAGE_KEY = "kairos_state";
 
+/**
+ * localStorage can be unavailable (e.g. Firefox with storage blocked raises
+ * NS_ERROR_FAILURE on access), so route all persistence through these guards.
+ */
+export const storageGet = (key: string): string | null => {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+
+export const storageSet = (key: string, value: string): void => {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    /* storage unavailable — state simply won't persist */
+  }
+};
+
 export const clamp = (value: number, min: number, max: number) =>
   Math.max(min, Math.min(max, value));
 
@@ -417,4 +437,120 @@ export const buildMasonryLayout = (
       maxY: Math.max(0, maxColHeight - viewportHeight),
     },
   };
+};
+
+export const buildSpatialLayout = (
+  displayBookmarks: Bookmark[],
+  targetAspect: number,
+  gap: number,
+  baseItemWidth = 240
+) => {
+  if (displayBookmarks.length === 0) {
+    return {
+      layoutItems: [] as LayoutItem[],
+      colWidth: baseItemWidth,
+      totalWidth: 0,
+      maxColHeight: 0,
+      contentBounds: { minX: 0, maxX: 0, minY: 0, maxY: 0 },
+    };
+  }
+
+  const itemWidth = baseItemWidth;
+  const colWidth = itemWidth + gap;
+
+  const naturalHeights: number[] = displayBookmarks.map((bookmark) => {
+    const image = bookmark.images?.[0];
+    const aspect = image && image.width > 0 && image.height > 0 ? image.width / image.height : 1;
+    return itemWidth / aspect;
+  });
+
+  const totalArea = itemWidth * naturalHeights.reduce((sum, h) => sum + h, 0);
+  const worldWidth = Math.sqrt(totalArea * targetAspect);
+  const columnsCount = Math.max(1, Math.min(displayBookmarks.length, Math.round(worldWidth / colWidth)));
+
+  const colHeights = new Array<number>(columnsCount).fill(0);
+  const columns: LayoutItem[][] = Array.from({ length: columnsCount }, () => []);
+
+  for (let index = 0; index < displayBookmarks.length; index += 1) {
+    let minCol = 0;
+    for (let columnIndex = 1; columnIndex < columnsCount; columnIndex += 1) {
+      if (colHeights[columnIndex] < colHeights[minCol]) minCol = columnIndex;
+    }
+
+    const itemHeight = naturalHeights[index];
+    const x = minCol * colWidth + gap / 2;
+    const y = colHeights[minCol] + gap / 2;
+
+    columns[minCol].push({
+      key: `${minCol}-${index}`,
+      bookmark: displayBookmarks[index],
+      x,
+      y,
+      w: itemWidth,
+      h: itemHeight,
+    });
+    colHeights[minCol] += itemHeight + gap;
+  }
+
+  const maxColHeight = Math.max(...colHeights);
+  const totalWidth = colWidth * columnsCount;
+  const layoutItems: LayoutItem[] = [];
+  for (let columnIndex = 0; columnIndex < columnsCount; columnIndex += 1) {
+    for (let rowIndex = 0; rowIndex < columns[columnIndex].length; rowIndex += 1) {
+      layoutItems.push(columns[columnIndex][rowIndex]);
+    }
+  }
+
+  return {
+    layoutItems,
+    colWidth,
+    totalWidth,
+    maxColHeight,
+    contentBounds: { minX: 0, maxX: totalWidth, minY: 0, maxY: maxColHeight },
+  };
+};
+
+export const layoutIntoColumns = (
+  displayBookmarks: Bookmark[],
+  columnsCount: number,
+  colWidth: number,
+  gap: number,
+  heightUnits?: number[]
+) => {
+  const itemWidth = Math.max(1, colWidth - gap);
+  const colHeights = new Array(columnsCount).fill(0);
+  const items: LayoutItem[] = [];
+
+  if (displayBookmarks.length === 0) {
+    return { items, maxColHeight: 0 };
+  }
+
+  for (let index = 0; index < displayBookmarks.length; index += 1) {
+    const bookmark = displayBookmarks[index];
+    let minCol = 0;
+    for (let columnIndex = 1; columnIndex < columnsCount; columnIndex += 1) {
+      if (colHeights[columnIndex] < colHeights[minCol]) minCol = columnIndex;
+    }
+
+    let itemHeight: number;
+    if (heightUnits) {
+      itemHeight = itemWidth * heightUnits[index];
+    } else {
+      const image = bookmark.images?.[0];
+      const aspect = image && image.width > 0 && image.height > 0 ? image.width / image.height : 1;
+      itemHeight = itemWidth / aspect;
+    }
+
+    items.push({
+      key: `${minCol}-${index}`,
+      bookmark,
+      x: minCol * colWidth + gap / 2,
+      y: colHeights[minCol] + gap / 2,
+      w: itemWidth,
+      h: itemHeight,
+    });
+    colHeights[minCol] += itemHeight + gap;
+  }
+
+  return { items, maxColHeight: Math.max(...colHeights) };
 };

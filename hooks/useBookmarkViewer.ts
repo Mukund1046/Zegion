@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { animate } from "motion";
 import type { AnimationOptions, DOMKeyframesDefinition } from "motion";
 import { iconPath, sortIcons } from "@/lib/icons";
+import { kairosPerf } from "@/lib/perf";
 import {
   advanceGeometry,
   advanceSpring,
@@ -26,6 +27,8 @@ import {
   isLowSpecDevice,
   isVerticalFeedView,
   lineClampText,
+  storageGet,
+  storageSet,
   twitterImageUrl,
 } from "@/lib/bookmark-utils";
 import { apiFetch } from "@/lib/client-api";
@@ -48,6 +51,19 @@ const DRAG_THRESHOLD = 5;
 const ZOOM_MIN = -3;
 const ZOOM_MAX = 3;
 const ZOOM_WHEEL_THRESHOLD = 60;
+
+// Zoom is a density delta; the effective range is bounded by the column
+// clamp (media 2-6, cards 1-5) for the current base column count, so every
+// step actually changes the layout/label (no dead clicks at the edge).
+const effectiveZoomBounds = (view: ViewMode, baseMedia: number, baseCard: number) => {
+  const base = view === "card" ? baseCard : baseMedia;
+  const minEff = view === "card" ? 1 : 2;
+  const maxEff = view === "card" ? 5 : 6;
+  return {
+    min: clamp(base - maxEff, ZOOM_MIN, ZOOM_MAX),
+    max: clamp(base - minEff, ZOOM_MIN, ZOOM_MAX),
+  };
+};
 
 interface ScrubberMarkerData {
   bookmark: Bookmark;
@@ -258,6 +274,8 @@ export function useBookmarkViewer() {
     animating: false,
     zoomWheelAccumulator: 0,
     zoomRebuildQueued: false,
+    zoomAnchor: null as { id: string; offsetY: number } | null,
+    profileTrigger: "restore",
     viewportWidth: 0,
     viewportHeight: 0,
     cameraOffset: { x: 0, y: 0 },
@@ -279,21 +297,17 @@ export function useBookmarkViewer() {
   });
 
   const saveState = useCallback(() => {
-    try {
-      const state: PersistedState = {
-        darkMode,
-        activeFolder,
-        activeView,
-        activeSort,
-        activeSearch,
-        activeFacetType,
-        activeFacetValue,
-        activeZoom: zoom,
-      };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch (e) {
-      console.warn("Failed to persist state to localStorage", e);
-    }
+    const state: PersistedState = {
+      darkMode,
+      activeFolder,
+      activeView,
+      activeSort,
+      activeSearch,
+      activeFacetType,
+      activeFacetValue,
+      activeZoom: zoom,
+    };
+    storageSet(STORAGE_KEY, JSON.stringify(state));
   }, [
     activeFacetType,
     activeFacetValue,
@@ -342,48 +356,52 @@ export function useBookmarkViewer() {
       if (mediaWrap) mediaWrap.style.display = hasImage ? "" : "none";
       if (body) body.style.display = view === "card" ? "" : "none";
 
-      if (hasImage && mediaWrap && image) {
-        const imageHeight =
-          view === "card"
-            ? clamp(
-                item.w / (bookmark.images[0].width / bookmark.images[0].height),
-                170,
-                320
-              )
-            : item.h;
-        mediaWrap.style.height = `${imageHeight}px`;
-        mediaWrap.classList.remove("loading-image");
+      kairosPerf.time("render", "content:image", () => {
+        if (hasImage && mediaWrap && image) {
+          const imageHeight =
+            view === "card"
+              ? clamp(
+                  item.w / (bookmark.images[0].width / bookmark.images[0].height),
+                  170,
+                  320
+                )
+              : item.h;
+          mediaWrap.style.height = `${imageHeight}px`;
+          mediaWrap.classList.remove("loading-image");
 
-        const source = twitterImageUrl(
-          bookmark.images[0].url,
-          view === "card" ? "large" : "medium"
-        );
-        if (image.src !== source) {
-          mediaWrap.classList.add("loading-image");
-          image.onload = () => mediaWrap.classList.remove("loading-image");
-          image.onerror = () => mediaWrap.classList.remove("loading-image");
-          image.src = source;
-          image.alt = bookmark.text.substring(0, 80);
+          const source = twitterImageUrl(
+            bookmark.images[0].url,
+            view === "card" ? "large" : "medium"
+          );
+          if (image.src !== source) {
+            mediaWrap.classList.add("loading-image");
+            image.onload = () => mediaWrap.classList.remove("loading-image");
+            image.onerror = () => mediaWrap.classList.remove("loading-image");
+            image.src = source;
+            image.alt = bookmark.text.substring(0, 80);
+          }
+        } else if (image) {
+          image.removeAttribute("src");
+          image.alt = "";
+          if (mediaWrap) mediaWrap.classList.remove("loading-image");
         }
-      } else if (image) {
-        image.removeAttribute("src");
-        image.alt = "";
-        if (mediaWrap) mediaWrap.classList.remove("loading-image");
-      }
+      });
 
-      if (view === "card" && author && handle && text && timeline && stats) {
-        author.textContent = bookmark.authorName || `@${bookmark.authorHandle}`;
-        handle.textContent = `@${bookmark.authorHandle}`;
-        handle.href = bookmark.url;
-        text.textContent = lineClampText(bookmark.text || "", hasImage ? 150 : 220);
-        timeline.textContent = getTimelineText(bookmark);
-        timeline.style.display = timeline.textContent ? "" : "none";
-        stats.innerHTML = `
-          <span>Likes ${formatCount(bookmark.likeCount)}</span>
-          <span>Reposts ${formatCount(bookmark.repostCount)}</span>
-          <span>Bookmarks ${formatCount(bookmark.bookmarkCount)}</span>
-        `;
-      }
+      kairosPerf.time("render", "content:body", () => {
+        if (view === "card" && author && handle && text && timeline && stats) {
+          author.textContent = bookmark.authorName || `@${bookmark.authorHandle}`;
+          handle.textContent = `@${bookmark.authorHandle}`;
+          handle.href = bookmark.url;
+          text.textContent = lineClampText(bookmark.text || "", hasImage ? 150 : 220);
+          timeline.textContent = getTimelineText(bookmark);
+          timeline.style.display = timeline.textContent ? "" : "none";
+          stats.innerHTML = `
+            <span>Likes ${formatCount(bookmark.likeCount)}</span>
+            <span>Reposts ${formatCount(bookmark.repostCount)}</span>
+            <span>Bookmarks ${formatCount(bookmark.bookmarkCount)}</span>
+          `;
+        }
+      });
 
       element.classList.remove("loading");
 
@@ -416,6 +434,8 @@ export function useBookmarkViewer() {
     const targetY = engine.targetOffset.y;
     const visibleThisFrame = new Set<string>();
 
+    const renderTrigger = engine.profileTrigger || "render";
+    kairosPerf.begin(renderTrigger, "render:pool");
     for (const item of engine.layoutItems) {
       // Geometry cache is authoritative; pooled nodes are disposable surfaces.
       let g = engine.geometry.get(item.bookmark.id);
@@ -470,6 +490,7 @@ export function useBookmarkViewer() {
           const sx = g.done ? 1 : g.current.w / item.w;
           const sy = g.done ? 1 : g.current.h / item.h;
           existing.poolEl.style.transform = `translate3d(${screenX}px, ${screenY}px, 0) scale(${sx}, ${sy})`;
+          kairosPerf.count("render:writes");
         }
         const tw = `${Math.round(item.w)}px`;
         const th = `${Math.round(item.h)}px`;
@@ -486,6 +507,7 @@ export function useBookmarkViewer() {
           existing.contentW = item.w;
           existing.contentH = item.h;
           renderCardContent(existing.poolEl, item.bookmark, item, view);
+          kairosPerf.count("render:content");
         }
         existing.screenX = screenX;
         existing.screenY = screenY;
@@ -500,6 +522,8 @@ export function useBookmarkViewer() {
         const nsy = g.done ? 1 : g.current.h / item.h;
         poolElement.style.transform = `translate3d(${screenX}px, ${screenY}px, 0) scale(${nsx}, ${nsy})`;
         renderCardContent(poolElement, item.bookmark, item, view);
+        kairosPerf.count("render:writes");
+        kairosPerf.count("render:content");
         engine.elToBookmark.set(poolElement, item.bookmark);
         engine.activeMap.set(id, {
           poolEl: poolElement,
@@ -512,16 +536,20 @@ export function useBookmarkViewer() {
         });
       }
     }
+    kairosPerf.end(renderTrigger, "render:pool");
 
+    kairosPerf.begin(renderTrigger, "render:evict");
     for (const [visKey, entry] of engine.activeMap) {
       if (!visibleThisFrame.has(visKey) && entry.poolEl !== lightboxElement) {
         entry.poolEl.style.display = "none";
         entry.poolEl.style.visibility = "";
+        kairosPerf.count("render:hides");
         engine.freePool.push(entry.poolEl);
         engine.elToBookmark.delete(entry.poolEl);
         engine.activeMap.delete(visKey);
       }
     }
+    kairosPerf.end(renderTrigger, "render:evict");
   }, [renderCardContent]);
 
   const requestRender = useCallback(() => {
@@ -553,12 +581,17 @@ export function useBookmarkViewer() {
       const now = performance.now();
       const dt = Math.min(Math.max(now - engine.transitionLastT, 0), 50);
       engine.transitionLastT = now;
+      const trigger = engine.profileTrigger || "transition";
+      const activeCount = engine.activeMap.size;
       let remaining = 0;
-      for (const [id, g] of engine.geometry) {
-        if (!engine.activeMap.has(id)) continue;
-        if (!g.done && !advanceSpring(g, dt)) remaining += 1;
-      }
-      renderVisibleItems();
+      kairosPerf.time(trigger, "tick:spring", () => {
+        for (const [id, g] of engine.geometry) {
+          if (!engine.activeMap.has(id)) continue;
+          if (!g.done && !advanceSpring(g, dt)) remaining += 1;
+        }
+      });
+      kairosPerf.time(trigger, "render:visible", () => renderVisibleItems());
+      kairosPerf.frame(trigger, activeCount, engine.layoutItems.length, dt);
       if (remaining > 0) {
         engine.transitionRaf = requestAnimationFrame(tick);
       } else {
@@ -573,6 +606,9 @@ export function useBookmarkViewer() {
           }
         }
         renderVisibleItems();
+        // The zoom burst is over; the next zoom rebuild re-anchors from the
+        // settled DOM at the user's current scroll position.
+        engine.zoomAnchor = null;
       }
     };
     engine.transitionRaf = requestAnimationFrame(tick);
@@ -585,6 +621,7 @@ export function useBookmarkViewer() {
       engine.transitionRaf = null;
     }
     engine.animating = false;
+    engine.zoomAnchor = null;
   }, []);
 
   const buildScrubberData = useCallback((bookmarksList: Bookmark[]) => {
@@ -933,14 +970,19 @@ export function useBookmarkViewer() {
 
       if (viewport) viewport.scrollTop = 0;
 
-      const layout = buildMasonryLayout(
-        bookmarks,
-        view,
-        getViewportWidth(),
-        getViewportHeight(),
-        mediaCols,
-        cardCols,
-        engine.config.GAP
+      const layout = kairosPerf.time(
+        engine.profileTrigger || "rebuild",
+        "layout",
+        () =>
+          buildMasonryLayout(
+            bookmarks,
+            view,
+            getViewportWidth(),
+            getViewportHeight(),
+            mediaCols,
+            cardCols,
+            engine.config.GAP
+          )
       );
 
       engine.layoutItems = layout.layoutItems;
@@ -953,42 +995,47 @@ export function useBookmarkViewer() {
       const seedNow = performance.now();
       const liveIds = new Set<string>();
 
-      for (const item of engine.layoutItems) {
-        const target = { x: item.x, y: item.y, w: item.w, h: item.h };
-        liveIds.add(item.bookmark.id);
-        const existing = engine.geometry.get(item.bookmark.id);
-        if (shouldAnimate && existing) {
-          // Retarget: keep current position and velocity, chase the new
-          // target. Rapid rebuilds splice smoothly instead of restarting.
-          existing.target = target;
-          existing.prev = { ...existing.current };
-          existing.done = false;
-        } else if (shouldAnimate) {
-          engine.geometry.set(
-            item.bookmark.id,
-            makeGeometryState(target, target, seedNow)
-          );
-        } else {
-          engine.geometry.set(item.bookmark.id, {
-            prev: target,
-            target,
-            current: { ...target },
-            velocity: { x: 0, y: 0, w: 0, h: 0 },
-            start: seedNow,
-            duration: 0,
-            done: true,
-          });
+      kairosPerf.time(engine.profileTrigger || "rebuild", "retarget", () => {
+        for (const item of engine.layoutItems) {
+          const target = { x: item.x, y: item.y, w: item.w, h: item.h };
+          liveIds.add(item.bookmark.id);
+          const existing = engine.geometry.get(item.bookmark.id);
+          if (shouldAnimate && existing) {
+            // Retarget: keep current position and velocity, chase the new
+            // target. Rapid rebuilds splice smoothly instead of restarting.
+            existing.target = target;
+            existing.prev = { ...existing.current };
+            existing.done = false;
+          } else if (shouldAnimate) {
+            engine.geometry.set(
+              item.bookmark.id,
+              makeGeometryState(target, target, seedNow)
+            );
+          } else {
+            engine.geometry.set(item.bookmark.id, {
+              prev: target,
+              target,
+              current: { ...target },
+              velocity: { x: 0, y: 0, w: 0, h: 0 },
+              start: seedNow,
+              duration: 0,
+              done: true,
+            });
+          }
         }
-      }
 
-      for (const [id] of engine.geometry) {
-        if (!liveIds.has(id)) engine.geometry.delete(id);
-      }
+        for (const [id] of engine.geometry) {
+          if (!liveIds.has(id)) engine.geometry.delete(id);
+        }
+      });
 
-      updateViewportMode();
-      buildScrubberData(bookmarks);
-      setScrubberVisible(isVerticalFeedView(view) && engine.scrubberData.length > 1);
-      setScrubberActive(isVerticalFeedView(view) && engine.scrubberData.length > 1);
+      const trigger = engine.profileTrigger || "rebuild";
+      kairosPerf.time(trigger, "rebuild:viewportMode", () => updateViewportMode());
+      kairosPerf.time(trigger, "rebuild:scrubber", () => buildScrubberData(bookmarks));
+      kairosPerf.time(trigger, "rebuild:state", () => {
+        setScrubberVisible(isVerticalFeedView(view) && engine.scrubberData.length > 1);
+        setScrubberActive(isVerticalFeedView(view) && engine.scrubberData.length > 1);
+      });
       engine.cameraOffset.y = clamp(
         engine.cameraOffset.y,
         engine.contentBounds.minY,
@@ -1000,12 +1047,14 @@ export function useBookmarkViewer() {
         engine.contentBounds.maxY
       );
 
-      if (shouldAnimate) {
-        startTransition();
-      } else {
-        stopTransition();
-      }
-      renderVisibleItems();
+      kairosPerf.time(trigger, "rebuild:transition", () => {
+        if (shouldAnimate) {
+          startTransition();
+        } else {
+          stopTransition();
+        }
+      });
+      kairosPerf.time(trigger, "rebuild:render", () => renderVisibleItems());
     },
     [
       buildScrubberData,
@@ -1063,18 +1112,24 @@ export function useBookmarkViewer() {
       view: ViewMode,
       animate = true
     ) => {
-      const filtered = getFilteredBookmarks(
-        bookmarks,
-        folder,
-        search,
-        facetType,
-        facetValue,
-        sort,
-        view
+      const engine = engineRef.current;
+      const trigger = engine.profileTrigger || "rebuild";
+      const filtered = kairosPerf.time(trigger, "filter:compute", () =>
+        getFilteredBookmarks(
+          bookmarks,
+          folder,
+          search,
+          facetType,
+          facetValue,
+          sort,
+          view
+        )
       );
 
       setDisplayBookmarks(filtered);
-      resetViewportAndRebuild(filtered, view, animate);
+      kairosPerf.time(trigger, "rebuild:total", () =>
+        resetViewportAndRebuild(filtered, view, animate)
+      );
     },
     [resetViewportAndRebuild]
   );
@@ -1091,6 +1146,7 @@ export function useBookmarkViewer() {
     engine.config.CARD_COLS = viewportWidth < 720 ? 1 : viewportWidth < 1200 ? 3 : 4;
 
     createPool();
+    engine.profileTrigger = "rebuild";
     refreshDisplay(
       allBookmarks,
       activeFolder,
@@ -1411,6 +1467,7 @@ export function useBookmarkViewer() {
     const nextFolders: BookmarkFolder[] = Array.isArray(data) ? [] : data.folders || [];
     setAllBookmarks(nextBookmarks);
     setFolders(nextFolders);
+    engineRef.current.profileTrigger = "reload";
     refreshDisplay(
       nextBookmarks,
       activeFolder,
@@ -1484,6 +1541,7 @@ export function useBookmarkViewer() {
     (folder: string) => {
       if (folder === activeFolder) return;
       viewportRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+      engineRef.current.profileTrigger = "filter:apply";
       setActiveFolder(folder);
       refreshDisplay(
         allBookmarks,
@@ -1512,6 +1570,7 @@ export function useBookmarkViewer() {
     (view: ViewMode) => {
       if (view === activeView) return;
       viewportRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+      engineRef.current.profileTrigger = "view:change";
       setActiveView(view);
       refreshDisplay(
         allBookmarks,
@@ -1547,19 +1606,90 @@ export function useBookmarkViewer() {
     requestAnimationFrame(() => {
       engine.zoomRebuildQueued = false;
       if (!loaded) return;
-      resetViewportAndRebuild(displayBookmarks, activeView, true);
+      // Anchor the reflow to the topmost visible card (captured from the live
+      // DOM just before the rebuild, so rapid clicks retarget the latest
+      // state). resetViewportAndRebuild zeroes scrollTop; re-anchoring keeps
+      // the card at the viewport top glued in place while everything below
+      // FLIP-glides to its new slot - the same behavior the feed already has
+      // at scrollTop=0, reproduced at any scroll depth.
+      const previousScrollTop = viewportRef.current?.scrollTop ?? 0;
+      // Capture the anchor once per burst. Rapid zoom clicks rebuild the feed
+      // before the previous FLIP glide settles, so re-reading the DOM each
+      // step would anchor to a card caught mid-flight at a stale offset (and
+      // a card whose slot near the feed top in the new layout drags the view
+      // to the top). Reusing the first anchor keeps the original card glued
+      // for every step; it is cleared once the transition settles.
+      if (engine.zoomAnchor === null) {
+        engine.zoomAnchor = (() => {
+          const viewportEl = viewportRef.current;
+          const grid = gridRef.current;
+          if (!viewportEl || !grid) return null;
+          const viewportTop = viewportEl.getBoundingClientRect().top;
+          let bestId: string | null = null;
+          let bestOffsetY = 0;
+          for (const el of grid.querySelectorAll<HTMLDivElement>(".grid-item")) {
+            if (el.offsetParent === null) continue;
+            const rect = el.getBoundingClientRect();
+            if (rect.bottom <= viewportTop) continue;
+            const bookmark = engine.elToBookmark.get(el);
+            if (!bookmark) continue;
+            const offsetY = rect.top - viewportTop;
+            if (bestId === null || offsetY < bestOffsetY) {
+              bestId = bookmark.id;
+              bestOffsetY = offsetY;
+            }
+          }
+          return bestId !== null ? { id: bestId, offsetY: bestOffsetY } : null;
+        })();
+      }
+      const anchor = engine.zoomAnchor;
+
+      engine.profileTrigger = "zoom";
+      kairosPerf.begin("zoom", "zoom:rebuild");
+      try {
+        resetViewportAndRebuild(displayBookmarks, activeView, true);
+
+        const nextViewport = viewportRef.current;
+        if (!nextViewport || !isVerticalFeedView(activeView)) return;
+        const maxScrollTop = Math.max(0, nextViewport.scrollHeight - nextViewport.clientHeight);
+        let nextScrollTop: number;
+        if (anchor) {
+          const anchorTarget = engine.layoutItems.find(
+            (it) => it.bookmark.id === anchor.id
+          )?.y;
+          nextScrollTop =
+            anchorTarget !== undefined
+              ? clamp(anchorTarget - anchor.offsetY, 0, maxScrollTop)
+              : Math.min(previousScrollTop, maxScrollTop);
+        } else {
+          nextScrollTop = Math.min(previousScrollTop, maxScrollTop);
+        }
+        nextViewport.scrollTop = nextScrollTop;
+        engine.feedScrollY = nextScrollTop;
+        engine.cameraOffset.y = nextScrollTop;
+        engine.targetOffset.y = nextScrollTop;
+        renderVisibleItems();
+      } finally {
+        kairosPerf.end("zoom", "zoom:rebuild");
+      }
     });
-  }, [activeView, displayBookmarks, loaded, resetViewportAndRebuild]);
+  }, [activeView, displayBookmarks, loaded, renderVisibleItems, resetViewportAndRebuild]);
 
   const applyZoom = useCallback(
     (delta: number) => {
-      const nextZoom = clamp(zoomRef.current + delta, ZOOM_MIN, ZOOM_MAX);
+      const engine = engineRef.current;
+      const bounds = effectiveZoomBounds(
+        activeView,
+        engine.config.MEDIA_COLS,
+        engine.config.CARD_COLS
+      );
+      const nextZoom = clamp(zoomRef.current + delta, bounds.min, bounds.max);
       if (nextZoom === zoomRef.current) return;
       zoomRef.current = nextZoom;
       setZoom(nextZoom);
       scheduleZoomRebuild();
     },
-    [scheduleZoomRebuild]
+    [activeView, scheduleZoomRebuild]
   );
 
   const resetZoom = useCallback(() => {
@@ -1575,6 +1705,7 @@ export function useBookmarkViewer() {
       setActiveFacetType(type);
       setActiveFacetValue(value);
       viewportRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+      engineRef.current.profileTrigger = "filter:apply";
       refreshDisplay(
         allBookmarks,
         activeFolder,
@@ -1612,7 +1743,7 @@ export function useBookmarkViewer() {
 
     const init = async () => {
       try {
-        const raw = localStorage.getItem(STORAGE_KEY);
+        const raw = storageGet(STORAGE_KEY);
         if (raw) {
           const restored = JSON.parse(raw) as PersistedState;
           if (restored.darkMode) setDarkMode(true);
@@ -1641,7 +1772,7 @@ export function useBookmarkViewer() {
           engineRef.current.feedScrollY = 0;
           if (restored.feedScrollY) {
             delete restored.feedScrollY;
-            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(restored)); } catch {}
+            try { storageSet(STORAGE_KEY, JSON.stringify(restored)); } catch {}
           }
         }
 
@@ -1658,6 +1789,18 @@ export function useBookmarkViewer() {
         const viewportWidth = getViewportWidth();
         engine.config.MEDIA_COLS = viewportWidth < 720 ? 2 : viewportWidth < 1100 ? 3 : 5;
         engine.config.CARD_COLS = viewportWidth < 720 ? 1 : viewportWidth < 1200 ? 3 : 4;
+
+        const restoredView =
+          raw && JSON.parse(raw).activeView ? JSON.parse(raw).activeView : "media";
+        const zoomBounds = effectiveZoomBounds(
+          restoredView,
+          engine.config.MEDIA_COLS,
+          engine.config.CARD_COLS
+        );
+        if (zoomRef.current < zoomBounds.min || zoomRef.current > zoomBounds.max) {
+          zoomRef.current = clamp(zoomRef.current, zoomBounds.min, zoomBounds.max);
+          setZoom(zoomRef.current);
+        }
 
         const folder =
           raw && JSON.parse(raw).activeFolder ? JSON.parse(raw).activeFolder : "All";
@@ -1876,6 +2019,7 @@ export function useBookmarkViewer() {
         return;
       }
 
+      engine.profileTrigger = "resize";
       const previousScrollTop = viewport?.scrollTop ?? 0;
 
       engine.config.POOL_SIZE = isLowSpecDevice() ? 260 : 420;
@@ -1885,6 +2029,15 @@ export function useBookmarkViewer() {
       const viewportWidth = engine.viewportWidth;
       engine.config.MEDIA_COLS = viewportWidth < 720 ? 2 : viewportWidth < 1100 ? 3 : 5;
       engine.config.CARD_COLS = viewportWidth < 720 ? 1 : viewportWidth < 1200 ? 3 : 4;
+      const zoomBounds = effectiveZoomBounds(
+        activeView,
+        engine.config.MEDIA_COLS,
+        engine.config.CARD_COLS
+      );
+      if (zoomRef.current < zoomBounds.min || zoomRef.current > zoomBounds.max) {
+        zoomRef.current = clamp(zoomRef.current, zoomBounds.min, zoomBounds.max);
+        setZoom(zoomRef.current);
+      }
       resetViewportAndRebuild(displayBookmarks, activeView, true);
 
       requestAnimationFrame(() => {
@@ -1903,6 +2056,10 @@ export function useBookmarkViewer() {
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" && engine.lightboxOpen) closeLightbox();
+      if (event.shiftKey && (event.key === "P" || event.key === "p")) {
+        kairosPerf.toggle();
+        event.preventDefault();
+      }
     };
 
     const onViewportKeyDown = (event: KeyboardEvent) => {
@@ -2175,6 +2332,22 @@ export function useBookmarkViewer() {
             : clamp(baseCols - zoom, 2, 6);
         return Math.round((baseCols / effCols) * 100);
       })(),
+      zoomMin: (() => {
+        const engine = engineRef.current;
+        return effectiveZoomBounds(
+          activeView,
+          engine.config.MEDIA_COLS,
+          engine.config.CARD_COLS
+        ).min;
+      })(),
+      zoomMax: (() => {
+        const engine = engineRef.current;
+        return effectiveZoomBounds(
+          activeView,
+          engine.config.MEDIA_COLS,
+          engine.config.CARD_COLS
+        ).max;
+      })(),
       activeSort,
       activeSearch,
       activeFacetType,
@@ -2214,6 +2387,7 @@ export function useBookmarkViewer() {
     actions: {
       setActiveSearch: (value: string, instant?: boolean) => {
         setActiveSearch(value);
+        engineRef.current.profileTrigger = "search";
         refreshDisplay(
           allBookmarks,
           activeFolder,
@@ -2227,6 +2401,7 @@ export function useBookmarkViewer() {
       },
       clearSearch: () => {
         setActiveSearch("");
+        engineRef.current.profileTrigger = "search";
         refreshDisplay(
           allBookmarks,
           activeFolder,
@@ -2244,6 +2419,7 @@ export function useBookmarkViewer() {
         setActiveFacetValue("All bookmarks");
         setActiveFolder("All");
         setActiveSort(DEFAULT_SORT);
+        engineRef.current.profileTrigger = "filter:reset";
         refreshDisplay(
           allBookmarks,
           "All",

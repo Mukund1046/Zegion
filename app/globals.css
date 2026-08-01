@@ -1573,6 +1573,138 @@ body.dark-mode .overlay-pop {
   color: var(--ctx-hover-text);
 }
 
+.spatial-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.spatial-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.spatial-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.spatial-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.spatial-btn {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--foreground);
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.spatial-btn:hover {
+  background: var(--muted);
+}
+
+.spatial-zoom {
+  min-width: 48px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+}
+
+.spatial-divider {
+  width: 1px;
+  height: 20px;
+  margin: 0 4px;
+  background: var(--border);
+}
+
+.spatial-count {
+  font-size: 0.8rem;
+  color: var(--muted-foreground);
+}
+
+.spatial-viewport {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  contain: layout style;
+  cursor: grab;
+  touch-action: none;
+}
+
+.spatial-viewport.dragging {
+  cursor: grabbing;
+}
+
+.spatial-world {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  overflow: visible;
+}
+
+.spatial-minimap {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  width: fit-content;
+  max-width: 30vw;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--card) 85%, transparent);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.15);
+  cursor: crosshair;
+  z-index: 5;
+  user-select: none;
+  touch-action: none;
+}
+
+.spatial-minimap-world {
+  position: relative;
+  width: 100%;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--muted);
+}
+
+.spatial-minimap-viewport {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border: 1.5px solid var(--foreground);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--foreground) 12%, transparent);
+  pointer-events: none;
+}
+
+.spatial-hint {
+  padding: 8px 16px;
+  border-top: 1px solid var(--border);
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  text-align: center;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

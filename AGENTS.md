@@ -37,6 +37,25 @@ Follow the existing JavaScript/TypeScript style: 2-space indentation, semicolons
 
 There is no formal automated test suite configured yet. Validate changes by running the full export workflow and checking the viewer in the browser. For UI work, verify all three modes (`Media`, `Cards`, `Canvas`), lightbox behavior, and folder filtering. For data-script changes, confirm the expected JSON files are regenerated without errors.
 
+## Developer Toolkit: Kairos Profiler
+
+A permanent, gated frame-time profiler lives in `lib/perf.ts` (singleton `kairosPerf`, exported as `window.__kairosPerf`). It is part of the renderer's engineering subsystem, not temporary instrumentation, and is fully inactive in normal usage (disabled path is a single boolean check; no allocation or `performance.now()` calls).
+
+**Activation**
+- `?profile` in the URL enables on load.
+- `Shift+P` toggles at runtime.
+- Disabling clears all buffers and removes the HUD.
+
+**Inspection**
+- The HUD shows frame stats (p50/p95/max), span summaries, and counters.
+- `window.__kairosPerf.summary()` returns `{ spans, frames, counters }` for DevTools capture. `spans[label]` gives `{ count, total, min, max, p50, p95 }`.
+
+**Span categories** (recorded in `useBookmarkViewer.ts`): `layout`, `retarget`, `filter:compute`, `rebuild:total`, `zoom:rebuild`, `rebuild:viewportMode`, `rebuild:scrubber`, `rebuild:state`, `rebuild:transition`, `rebuild:render`, `render:pool`, `render:evict`, `content:image`, `content:body`, `tick:spring`, `render:visible`.
+
+**Engineering policy**
+- Optimize only when the profiler identifies a reproducible hotspot — never based on perceived sluggishness.
+- When adding new renderer subsystems (e.g. timeline, card types, media pipeline, animations), instrument them using the existing profiler instead of introducing separate performance tooling.
+
 ## Commit & Pull Request Guidelines
 
 Keep commits focused with short imperative subjects. Pull requests should describe the user-visible change, note any config or cookie-related impacts, and include screenshots for UI changes.

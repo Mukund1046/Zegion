@@ -647,7 +647,7 @@ function FeedRegion({
             aria-label="Zoom out"
             className="zoom-btn"
             onClick={() => actions.applyZoom(-1)}
-            disabled={state.zoom <= -3}
+            disabled={state.zoom <= state.zoomMin}
             style={{ padding: `${bar.btnPadding as number}px` }}
           >
             −
@@ -664,7 +664,7 @@ function FeedRegion({
             aria-label="Zoom in"
             className="zoom-btn"
             onClick={() => actions.applyZoom(1)}
-            disabled={state.zoom >= 3}
+            disabled={state.zoom >= state.zoomMax}
             style={{ padding: `${bar.btnPadding as number}px` }}
           >
             +
