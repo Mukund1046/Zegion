@@ -19,6 +19,34 @@ skills-lock.json
 # Generated reports
 react-doctor-report.json
 
+# Spatial motion version snapshots & backups (rollback copies, never pushed)
+spatialv1/
+spatialv3/
+spatialv4/
+spatialv2.hooks.useSpatialViewer.ts.bak
+*.bak
+*.bak.ts
+
+# Reference sources copied in for study
+Reference/
+
+# Dev verification & benchmark scripts (not app code)
+spatial-measure.mjs
+spatial-measure-churn.mjs
+spatial-scrollzoom.mjs
+probe-flip-consistency.mjs
+
+# Session captures & scratch
+session-*.md
+Sortablelist.md
+
+# Logs
+*.log
+
+# Local tooling state
+.codemark/
+.opencode/
+
 # OS
 .DS_Store
 Thumbs.db
@@ -28,3 +56,6 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# ShipStudio metadata
+.shipstudio/

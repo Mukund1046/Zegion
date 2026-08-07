@@ -950,6 +950,16 @@ body.dark-mode .proximity-dash.is-active {
   transform-origin: 0 0;
 }
 
+/* The spatial renderer writes card transforms every frame during a fluid zoom
+   and must land a card's transform+geometry exactly once on a mode flip. The
+   shared theme-transition rule above would interpolate each per-frame write
+   over 240ms, low-passing the camera motion and making the flip frame render at
+   an intermediate scale instead of the exact contract. Spatial cards therefore
+   animate transform changes imperceptibly instead of transitioning them. */
+.spatial-world .grid-item {
+  transition: background 0.24s ease, color 0.24s ease, border-color 0.24s ease;
+}
+
 body.dark-mode .grid-item {
   background: var(--card);
 }

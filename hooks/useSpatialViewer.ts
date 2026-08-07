@@ -1,187 +1,90 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { kairosPerf } from "@/lib/perf";
-import { clamp, isLowSpecDevice, twitterImageUrl } from "@/lib/bookmark-utils";
-import type { LayoutItem } from "@/lib/bookmark-utils";
-import type { Bookmark } from "@/lib/types";
 import { apiFetch } from "@/lib/client-api";
+import { isLowSpecDevice } from "@/lib/bookmark-utils";
+import { kairosPerf } from "@/lib/perf";
+import type { Bookmark } from "@/lib/types";
+import {
+  createSpatialEngine,
+  loadEngineBookmarks,
+  setEngineViewport,
+  applyZoomAt,
+  hardClampCamera,
+  applyResistance,
+  tickCamera,
+  cullVisible,
+  computeGrid,
+  captureLayout,
+  captureTarget,
+  morphSettle,
+  criticalSettle,
+  cameraForAnchor,
+  ZOOM_WHEEL_PX_PER_STEP,
+  ZOOM_WHEEL_FACTOR,
+  ZOOM_STEP_FACTOR,
+  DRAG_THRESHOLD_SQ,
+  DRAG_SPEED,
+  PAN_EASE,
+  ZOOM_EASE,
+  FLUID_ZOOM_TAU,
+  GRID_REZ_EPS,
+  type VisibleItem,
+  type GridItem,
+  type SpatialEngine,
+  type ZoomAnchor,
+} from "@/lib/spatial/spatial-engine";
+import { createDomRenderer, type DomRenderer, type BookmarkForRender, type RenderMode } from "@/lib/spatial/dom-renderer";
 
-const GAP = 18;
-const DRAG_THRESHOLD_SQ = 25;
-const ZOOM_WHEEL_THRESHOLD = 60;
-const ZOOM_WHEEL_FACTOR = 1.2;
-const ZOOM_STEP_FACTOR = 1.25;
-const MAX_ZOOM = 4.5;
-const FIT_ZOOM = 0.02;
-const PROTOTYPE_COUNT = 800;
-const CULL_BUFFER = 600;
-const MOUNT_SLICE = 6;
-const DRAG_SPEED = 1.15;
-const DRAG_RESISTANCE = 0.25;
-const MAX_OVER_SHOOT = 220;
-const ELASTIC_S_MAX = 380;
-const ELASTIC_S_OPT = 200;
-const REFLOW_DELAY = 160;
-const REFLOW_ZOOM_EPS = 0.015;
-const REFLOW_THROTTLE_MS = 100;
-const SETTLE_PROPAGATION = 0.4;
-const VELOCITY_CLAMP_CARDS = 1;
-const DOM_WRITE_EPS = 0.25;
+/** Idle time after the last zoom input before the layout re-solves and settles
+ *  into its optimal packing. The camera alone drives zoom while the user is
+ *  gesturing; this is the threshold before the single refinement pass. */
+const SETTLE_IDLE_MS = 350;
+/** Duration of the post-gesture single critically-damped packing settle. */
+const SETTLE_MS = 220;
+/** Horizontal focus of the reading anchor (0.5 = viewport center). */
+const SETTLE_FOCUS_X = 0.5;
+/** Vertical focus of the reading anchor: 40% down the viewport, tuned for feed
+ *  reading. During the post-zoom re-pack the camera follows this card so the
+ *  user's reading region does not visibly push down/up as rows resize. */
+const SETTLE_FOCUS_Y = 0.4;
 
-type ImageSize = "small" | "medium" | "large";
-
-const IMAGE_SIZES: Record<ImageSize, string> = {
-  small: "small",
-  medium: "medium",
-  large: "large",
-};
-
-interface Camera {
-  x: number;
-  y: number;
-  zoom: number;
-}
-
-interface ActiveEntry {
-  poolEl: HTMLDivElement;
-  zoomBucket: ImageSize;
-  lx: number;
-  ly: number;
-}
-
-const imageBucket = (zoom: number): ImageSize => {
-  if (zoom < 0.6) return "small";
-  if (zoom < 1.6) return "medium";
-  return "large";
-};
-
-const damped = (current: number, target: number, k: number) =>
-  current + (target - current) * k;
-
-const clampVel = (value: number, limit: number) => {
-  if (value > limit) return limit;
-  if (value < -limit) return -limit;
-  return value;
-};
-
-interface SpatialLayout {
-  items: LayoutItem[];
-  worldW: number;
-  worldH: number;
-  rows: number;
-}
-
-/**
- * Finds the lowest-cost contiguous partition for a justified image grid.
- * Every row fills the available world width; card height is therefore the
- * result of the solve rather than a fixed input. The bounded row width keeps
- * the dynamic program inexpensive even for the 800-item prototype.
- */
-const solveJustifiedRows = (
-  bookmarks: Bookmark[],
-  aspects: number[],
-  worldW: number,
-  gap: number,
-  desiredHeight: number
-): SpatialLayout => {
-  const count = bookmarks.length;
-  if (count === 0 || worldW <= gap) {
-    return { items: [], worldW: 0, worldH: 0, rows: 0 };
-  }
-
-  const totalAspect = aspects.reduce((sum, aspect) => sum + aspect, 0);
-  const estimatedRows = Math.round(
-    (totalAspect * desiredHeight + count * gap) / worldW
-  );
-  const rows = clamp(estimatedRows, 1, count);
-  const idealItemsPerRow = count / rows;
-  const maxItemsPerRow = Math.min(
-    count,
-    Math.max(8, Math.ceil(idealItemsPerRow * 3.25))
-  );
-  const prefix = new Float64Array(count + 1);
-  for (let index = 0; index < count; index += 1) {
-    prefix[index + 1] = prefix[index] + aspects[index];
-  }
-
-  let previous = new Float64Array(count + 1);
-  previous.fill(Number.POSITIVE_INFINITY);
-  previous[0] = 0;
-  const starts = new Int16Array((rows + 1) * (count + 1));
-  starts.fill(-1);
-
-  for (let row = 1; row <= rows; row += 1) {
-    const next = new Float64Array(count + 1);
-    next.fill(Number.POSITIVE_INFINITY);
-    const minEnd = row;
-    const maxEnd = Math.min(count, row * maxItemsPerRow);
-    for (let end = minEnd; end <= maxEnd; end += 1) {
-      const firstStart = Math.max(row - 1, end - maxItemsPerRow);
-      for (let start = firstStart; start < end; start += 1) {
-        const prior = previous[start];
-        if (!Number.isFinite(prior)) continue;
-        const rowCount = end - start;
-        const aspectSum = prefix[end] - prefix[start];
-        const rowHeight = (worldW - rowCount * gap) / aspectSum;
-        if (rowHeight <= 0) continue;
-        const heightCost = Math.pow(Math.log(rowHeight / desiredHeight), 2);
-        const densityCost =
-          Math.pow((rowCount - idealItemsPerRow) / maxItemsPerRow, 2) * 0.04;
-        const cost = prior + heightCost + densityCost;
-        if (cost < next[end]) {
-          next[end] = cost;
-          starts[row * (count + 1) + end] = start;
-        }
-      }
+/** Find the layout item whose world-space box contains (wx, wy). Returns the
+ *  item index, or the nearest item when the point lands in a row gap (fallback
+ *  keeps the compensation from silently dropping to nothing). */
+const findCardAtWorld = (items: readonly GridItem[], length: number, wx: number, wy: number): number => {
+  let best = -1;
+  let bestDist = Infinity;
+  for (let i = 0; i < length; i += 1) {
+    const it = items[i];
+    if (it.w <= 0 || it.h <= 0) continue;
+    if (wx >= it.x && wx < it.x + it.w && wy >= it.y && wy < it.y + it.h) return i;
+    const cx = it.x + it.w / 2;
+    const cy = it.y + it.h / 2;
+    const d = (wx - cx) * (wx - cx) + (wy - cy) * (wy - cy);
+    if (d < bestDist) {
+      bestDist = d;
+      best = i;
     }
-    previous = next;
   }
-
-  const boundaries = new Array<number>(rows + 1);
-  boundaries[rows] = count;
-  let end = count;
-  for (let row = rows; row > 0; row -= 1) {
-    const start = starts[row * (count + 1) + end];
-    if (start < 0) {
-      for (let index = 0; index <= rows; index += 1) {
-        boundaries[index] = Math.round((index * count) / rows);
-      }
-      break;
-    }
-    boundaries[row - 1] = start;
-    end = start;
-  }
-
-  const items: LayoutItem[] = [];
-  let y = 0;
-  for (let row = 0; row < rows; row += 1) {
-    const start = boundaries[row];
-    const endIndex = boundaries[row + 1];
-    const rowCount = endIndex - start;
-    const aspectSum = prefix[endIndex] - prefix[start];
-    const rowHeight = Math.max(
-      1,
-      (worldW - rowCount * gap) / Math.max(aspectSum, 0.001)
-    );
-    let x = gap / 2;
-    for (let index = start; index < endIndex; index += 1) {
-      const width = aspects[index] * rowHeight;
-      items.push({
-        key: `${row}-${index}`,
-        bookmark: bookmarks[index],
-        x,
-        y: y + gap / 2,
-        w: width,
-        h: rowHeight,
-      });
-      x += width + gap;
-    }
-    y += rowHeight + gap;
-  }
-
-  return { items, worldW, worldH: y, rows };
+  return best;
 };
+
+const toGridBookmark = (bookmark: Bookmark) => {
+  const image = bookmark.images?.[0];
+  const aspect = image && image.width > 0 && image.height > 0 ? image.width / image.height : 1;
+  return { bookmarkId: bookmark.id, aspect };
+};
+
+const toRenderBookmark = (bookmark: Bookmark): BookmarkForRender => ({
+  id: bookmark.id,
+  text: bookmark.text || "",
+  images: (bookmark.images || []).map((image) => ({
+    url: image.url,
+    width: image.width,
+    height: image.height,
+  })),
+});
 
 export function useSpatialViewer() {
   const viewportRef = useRef<HTMLElement>(null);
@@ -195,134 +98,120 @@ export function useSpatialViewer() {
   const [loaded, setLoaded] = useState(false);
   const [dragging, setDragging] = useState(false);
 
-  const engineRef = useRef({
-    layoutItems: [] as LayoutItem[],
-    reflowTargets: null as LayoutItem[] | null,
-    layoutR: 1,
-    refracting: false,
-    settleTimer: null as number | null,
-    bookmarks: [] as Bookmark[],
-    aspectUnits: [] as number[],
-    totalAspect: 0,
-    sFit: 1,
-    zFit: FIT_ZOOM,
-    worldW: 0,
-    worldH: 0,
-    viewportW: 0,
-    viewportH: 0,
-    minZoom: FIT_ZOOM,
-    maxZoom: MAX_ZOOM,
-    camera: { x: 0, y: 0, zoom: 1 } as Camera,
-    target: { x: 0, y: 0, zoom: 1 } as Camera,
-    pool: [] as HTMLDivElement[],
-    freePool: [] as HTMLDivElement[],
-    activeMap: new Map<string, ActiveEntry>(),
-    elToBookmark: new WeakMap<HTMLDivElement, Bookmark>(),
-    raf: null as number | null,
-    sliceRaf: null as number | null,
-    lastT: 0,
-    animating: false,
-    loaded: false,
-    hasUnrendered: false,
-    isDragging: false,
-    hasDragged: false,
-    dragStart: null as { x: number; y: number } | null,
-    dragCam: null as { x: number; y: number } | null,
-    wheelAccum: 0,
-    solveZoom: 1,
-    lastReflowAt: 0,
-    zoomWasMoving: false,
-    poolSize: isLowSpecDevice() ? 260 : Math.max(420, PROTOTYPE_COUNT + 100),
-  });
-
+  const engineRef = useRef<SpatialEngine | null>(null);
+  const rendererRef = useRef<DomRenderer | null>(null);
+  const bookmarkMapRef = useRef<Map<string, BookmarkForRender>>(new Map());
+  const visibleItemsRef = useRef<VisibleItem[]>([]);
   const ensureLoopRef = useRef<() => void>(() => {});
+  /** Active world-space interaction anchor (point beneath the cursor captured
+   *  when a zoom gesture begins). The camera is re-pinned to this point while
+   *  the gesture runs -- cards are not tracked. */
+  const anchorRef = useRef<ZoomAnchor | null>(null);
+  /** Reading anchor captured when a gesture ends and the layout re-solves. It
+   *  pins a specific card (by layout index + normalized offsets) so the settle
+   *  morph can follow it and keep the user's reading region fixed on screen
+   *  while rows above/below resize. */
+  const settleAnchorRef = useRef<{
+    index: number;
+    nx: number;
+    ny: number;
+    focusX: number;
+    focusY: number;
+  } | null>(null);
+  /** Viewport-relative last pointer position (drives button zoom anchor). */
+  const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
 
-  const hardClamp = useCallback((cam: Camera) => {
-    const engine = engineRef.current;
-    const z = cam.zoom;
-    const maxX = Math.max(0, engine.worldW * z - engine.viewportW);
-    const maxY = Math.max(0, engine.worldH * z - engine.viewportH);
-    cam.x = maxX > 0 ? clamp(cam.x, 0, maxX) : (engine.worldW * z - engine.viewportW) / 2;
-    cam.y = maxY > 0 ? clamp(cam.y, 0, maxY) : (engine.worldH * z - engine.viewportH) / 2;
+  const activeMapSize = useCallback(() => {
+    return rendererRef.current?.activeMapSize?.() ?? 0;
   }, []);
 
-  const applyResistance = (value: number, min: number, max: number) => {
-    if (value < min) return min - Math.min(min - value, MAX_OVER_SHOOT) * DRAG_RESISTANCE;
-    if (value > max) return max + Math.min(value - max, MAX_OVER_SHOOT) * DRAG_RESISTANCE;
-    return value;
-  };
-
-  const computeFit = useCallback(() => {
+  const hardClamp = useCallback(() => {
     const engine = engineRef.current;
-    const vw = engine.viewportW;
-    const vh = engine.viewportH;
-    const A = engine.totalAspect;
-    const N = engine.bookmarks.length;
-    if (A <= 0 || N === 0 || vw <= 0 || vh <= 0) {
-      engine.sFit = 1;
-      return;
-    }
-    const B = A * GAP + N * GAP;
-    const C = vw * vh - N * GAP * GAP;
-    const disc = B * B + 4 * A * C;
-    let sFit = (-B + Math.sqrt(disc)) / (2 * A);
-    if (!isFinite(sFit) || sFit <= 0) sFit = Math.sqrt((vw * vh) / A);
-    engine.sFit = sFit;
-    engine.zFit = FIT_ZOOM;
-    engine.minZoom = engine.zFit;
+    if (!engine) return;
+    hardClampCamera(engine, engine.camera);
+    hardClampCamera(engine, engine.target);
   }, []);
 
-  const elasticSize = useCallback((z: number) => {
+  const renderFrame = useCallback(() => {
     const engine = engineRef.current;
-    const lnFit = Math.log(engine.zFit);
-    const lnMax = Math.log(engine.maxZoom);
-    const lnZ = Math.log(z);
-    if (lnZ <= 0) {
-      const t = clamp((lnZ - lnFit) / (0 - lnFit), 0, 1);
-      return engine.sFit + (ELASTIC_S_OPT - engine.sFit) * t;
+    const renderer = rendererRef.current;
+    const world = worldRef.current;
+    if (!engine || !renderer || !world) return;
+    const visible = visibleItemsRef.current;
+    const visibleIds = engine.lastVisible;
+    // During a fluid gesture the camera moves in the compositor, not the cards:
+    //  - `?wz=1` ("world"): ONE container transform, cards pinned to world coords.
+    //  - default ("scale"): per-card compositor transform `translate3d(world*z - cam)
+    //    scale(z)`. Card intrinsic geometry (width/height/border/radius/shadow,
+    //    image layout, DOM) stays IMMUTABLE for the whole gesture — only the
+    //    transform changes per frame, so nothing re-layouts or re-rasters. The new
+    //    geometry is baked once when the gesture settles (mode flips to "screen").
+    const mode: RenderMode =
+      engine.fluid ? (engine.worldTransform ? "world" : "scale") : "screen";
+    const worldSpace = mode !== "screen";
+    if (mode === "world") {
+      world.style.transformOrigin = "0 0";
+      world.style.transform = `translate3d(${-engine.camera.x}px, ${-engine.camera.y}px, 0) scale(${engine.camera.zoom})`;
+      world.style.willChange = "transform";
+    } else if (world.style.transform !== "" || world.style.willChange !== "") {
+      world.style.transform = "";
+      world.style.willChange = "";
     }
-    const t = clamp(lnZ / lnMax, 0, 1);
-    return ELASTIC_S_OPT + (ELASTIC_S_MAX - ELASTIC_S_OPT) * t;
+    cullVisible(engine, visible, visibleIds, worldSpace);
+    renderer.render(visible, visibleIds, bookmarkMapRef.current, mode, engine.camera);
   }, []);
 
-  const computeLayout = useCallback((z: number) => {
+  /** Capture the world-space point currently under the pointer as the zoom
+   *  anchor. The camera is owned by the interaction and keeps exactly this
+   *  point under the cursor for the duration of the gesture. */
+  const captureAnchor = useCallback((cursorX: number, cursorY: number) => {
     const engine = engineRef.current;
-    const vw = engine.viewportW;
-    if (engine.bookmarks.length === 0 || vw <= 0 || z <= 0) {
-      return { items: [] as LayoutItem[], worldW: 0, worldH: 0, rows: 0 };
-    }
-    return solveJustifiedRows(
-      engine.bookmarks,
-      engine.aspectUnits,
-      vw / z,
-      GAP / z,
-      elasticSize(z) / z
-    );
-  }, [elasticSize]);
+    if (!engine) return;
+    // A fresh gesture supersedes any in-flight settle: drop the reading follow
+    // AND cancel the settle morph so layoutItems are frozen as an inert surface
+    // for the whole gesture. During fluid the layout must be completely
+    // immutable — a lingering morph would mutate world geometry per-card while
+    // the compositor also scales it (two motion systems at once).
+    settleAnchorRef.current = null;
+    engine.solveT = -1;
+    engine.solveFrom.length = 0;
+    engine.solveTarget.length = 0;
+    anchorRef.current = {
+      worldX: (cursorX + engine.camera.x) / engine.camera.zoom,
+      worldY: (cursorY + engine.camera.y) / engine.camera.zoom,
+      cursorX,
+      cursorY,
+    };
+  }, []);
+
+  const clearAnchor = useCallback(() => {
+    anchorRef.current = null;
+  }, []);
 
   const layoutMinimap = useCallback(() => {
     const engine = engineRef.current;
     const mw = minimapWorldRef.current;
-    if (!mw || engine.worldW <= 0 || engine.worldH <= 0) return;
-    const aspect = engine.worldW / engine.worldH;
+    if (!engine || !mw || engine.worldW <= 0 || engine.worldH <= 0) return;
+    const aspectRatio = engine.worldW / engine.worldH;
     const maxH = Math.min(180, Math.max(60, engine.viewportH * 0.4));
     const maxW = Math.min(220, engine.viewportW * 0.3);
     let height = maxH;
-    let width = height * aspect;
+    let width = height * aspectRatio;
     if (width > maxW) {
       width = maxW;
-      height = width / aspect;
+      height = width / aspectRatio;
     }
     mw.style.width = `${width}px`;
     mw.style.height = `${height}px`;
+    (mw as HTMLElement & { __scale?: number }).__scale = width / Math.max(1, engine.worldW);
   }, []);
 
   const updateMinimap = useCallback(() => {
     const engine = engineRef.current;
     const mw = minimapWorldRef.current;
     const mv = minimapViewportRef.current;
-    if (!mw || !mv || !engine.loaded) return;
-    const scale = mw.clientWidth / Math.max(1, engine.worldW);
+    if (!engine || !mw || !mv) return;
+    const scale = (mw as HTMLElement & { __scale?: number }).__scale ?? 1;
     const z = engine.camera.zoom;
     const worldCamX = engine.camera.x / z;
     const worldCamY = engine.camera.y / z;
@@ -332,391 +221,388 @@ export function useSpatialViewer() {
     mv.style.height = `${Math.max(2, (engine.viewportH / z) * scale).toFixed(1)}px`;
   }, []);
 
-  const renderCardContent = useCallback(
-    (element: HTMLDivElement, bookmark: Bookmark, item: LayoutItem, bucket: ImageSize, heightPx: number) => {
-      const mediaWrap = (element as HTMLDivElement & { _media?: HTMLElement })._media;
-      const image = element.querySelector<HTMLImageElement>("img");
-      const hasImage = bookmark.images && bookmark.images.length > 0;
-
-      if (hasImage && mediaWrap && image) {
-        mediaWrap.style.height = `${Math.round(heightPx)}px`;
-        mediaWrap.classList.remove("loading-image");
-        const source = twitterImageUrl(bookmark.images[0].url, IMAGE_SIZES[bucket]);
-        if (image.src !== source) {
-          mediaWrap.classList.add("loading-image");
-          image.onload = () => mediaWrap.classList.remove("loading-image");
-          image.onerror = () => mediaWrap.classList.remove("loading-image");
-          image.src = source;
-          image.alt = bookmark.text.substring(0, 80);
-        }
-      } else if (image) {
-        image.removeAttribute("src");
-        image.alt = "";
-        if (mediaWrap) mediaWrap.classList.remove("loading-image");
-      }
-      element.classList.remove("loading");
-    },
-    []
-  );
-
-  const renderVisibleItems = useCallback(
-    (sliceLimit?: number) => {
-      const engine = engineRef.current;
-      const world = worldRef.current;
-      if (!world || !engine.loaded) return;
-
-      const vw = engine.viewportW;
-      const vh = engine.viewportH;
-      const z = engine.camera.zoom;
-      const camX = engine.camera.x;
-      const camY = engine.camera.y;
-      const visible = new Set<string>();
-      engine.hasUnrendered = false;
-      let mounted = 0;
-
-      kairosPerf.begin("camera", "render:pool");
-      for (const item of engine.layoutItems) {
-        const x = item.x * z - camX;
-        const y = item.y * z - camY;
-        const w = item.w * z;
-        const h = item.h * z;
-        if (x + w < -CULL_BUFFER || x > vw + CULL_BUFFER || y + h < -CULL_BUFFER || y > vh + CULL_BUFFER)
-          continue;
-
-        const id = item.bookmark.id;
-        visible.add(id);
-        const existing = engine.activeMap.get(id);
-        if (existing) {
-          if (Math.abs(x - existing.lx) > DOM_WRITE_EPS || Math.abs(y - existing.ly) > DOM_WRITE_EPS) {
-            existing.poolEl.style.transform = `translate3d(${x}px, ${y}px, 0)`;
-            existing.lx = x;
-            existing.ly = y;
-            kairosPerf.count("render:writes");
-          }
-          const rw = Math.round(w);
-          const rh = Math.round(h);
-          const mediaWrap = (existing.poolEl as HTMLDivElement & { _media?: HTMLElement })._media;
-          if (existing.poolEl.style.width !== `${rw}px`) {
-            existing.poolEl.style.width = `${rw}px`;
-            existing.poolEl.style.height = `${rh}px`;
-            if (mediaWrap) mediaWrap.style.height = `${rh}px`;
-          }
-          const bucket = imageBucket(z);
-          if (bucket !== existing.zoomBucket) {
-            existing.zoomBucket = bucket;
-            renderCardContent(existing.poolEl, item.bookmark, item, bucket, h);
-            kairosPerf.count("render:content");
-          }
-        } else {
-          if (sliceLimit !== undefined && mounted >= sliceLimit) {
-            engine.hasUnrendered = true;
-            continue;
-          }
-          mounted += 1;
-          const poolEl = engine.freePool.pop();
-          if (!poolEl) {
-            engine.hasUnrendered = false;
-            continue;
-          }
-          poolEl.style.display = "";
-          poolEl.style.width = `${Math.round(w)}px`;
-          poolEl.style.height = `${Math.round(h)}px`;
-          const bucket = imageBucket(z);
-          poolEl.style.transform = `translate3d(${x}px, ${y}px, 0)`;
-          renderCardContent(poolEl, item.bookmark, item, bucket, h);
-          kairosPerf.count("render:writes");
-          kairosPerf.count("render:content");
-          engine.elToBookmark.set(poolEl, item.bookmark);
-          engine.activeMap.set(id, { poolEl, zoomBucket: bucket, lx: x, ly: y });
-        }
-      }
-      kairosPerf.end("camera", "render:pool");
-
-      if (sliceLimit !== undefined) return;
-
-      kairosPerf.begin("camera", "render:evict");
-      for (const [id, entry] of engine.activeMap) {
-        if (!visible.has(id)) {
-          entry.poolEl.style.display = "none";
-          engine.freePool.push(entry.poolEl);
-          engine.elToBookmark.delete(entry.poolEl);
-          engine.activeMap.delete(id);
-        }
-      }
-      kairosPerf.end("camera", "render:evict");
-    },
-    [renderCardContent]
-  );
-
-  const createPool = useCallback(() => {
-    const world = worldRef.current;
-    const engine = engineRef.current;
-    if (!world) return;
-
-    world.innerHTML = "";
-    engine.pool = [];
-    engine.freePool = [];
-    engine.activeMap.clear();
-
-    const fragment = document.createDocumentFragment();
-    for (let index = 0; index < engine.poolSize; index += 1) {
-      const element = document.createElement("div");
-      element.className = "grid-item loading";
-      element.style.display = "none";
-      element.innerHTML = `
-        <div class="grid-item-media">
-          <img src="" alt="" loading="lazy" decoding="async">
-        </div>
-      `;
-      (element as HTMLDivElement & { _media?: HTMLElement })._media =
-        element.querySelector<HTMLElement>(".grid-item-media") ?? undefined;
-      fragment.appendChild(element);
-      engine.pool.push(element);
-      engine.freePool.push(element);
-    }
-    world.appendChild(fragment);
-  }, []);
-
-  const retargetLayout = useCallback(
-    (z: number) => {
-      const engine = engineRef.current;
-      if (Math.abs(z - engine.solveZoom) < REFLOW_ZOOM_EPS) return;
-      const layout = computeLayout(z);
-      engine.reflowTargets = layout.items;
-      engine.layoutR = layout.rows;
-      engine.solveZoom = z;
-      engine.worldW = layout.worldW;
-      engine.worldH = layout.worldH;
-      engine.refracting = true;
-      engine.lastReflowAt = performance.now();
-      layoutMinimap();
-      ensureLoopRef.current();
-    },
-    [computeLayout, layoutMinimap]
-  );
-
-  const scheduleReflow = useCallback(() => {
-    const engine = engineRef.current;
-    if (engine.settleTimer !== null) return;
-    engine.settleTimer = window.setTimeout(() => {
-      engine.settleTimer = null;
-      retargetLayout(engine.camera.zoom);
-    }, REFLOW_DELAY);
-  }, [retargetLayout]);
-
   const ensureLoop = useCallback(() => {
     const engine = engineRef.current;
-    if (engine.raf !== null) return;
-    engine.lastT = performance.now();
+    if (!engine || engine.animating) return;
     engine.animating = true;
+    engine.lastT = performance.now();
 
     const tick = () => {
       const now = performance.now();
       const dt = Math.min(Math.max(now - engine.lastT, 0), 50);
       engine.lastT = now;
-      const cam = engine.camera;
-      const target = engine.target;
-      const k = 1 - Math.pow(0.78, dt / 16.667);
+      const zooming = Math.abs(engine.target.zoom - engine.camera.zoom) > 0.0001;
+      const easeBase = zooming ? ZOOM_EASE : PAN_EASE;
+      // Experimental smoothed fluid zoom (?zsmooth=1): during a gesture the
+      // camera eases toward the evolving target with a short critically-damped
+      // exponential (~100ms) so the motion is temporally continuous instead of
+      // discrete notches. All cards still scale as one rigid surface.
+      const k =
+        engine.fluid && engine.fluidSmooth
+          ? 1 - Math.exp(-dt / FLUID_ZOOM_TAU)
+          : 1 - Math.pow(easeBase, dt / 16.667);
       let camMoved = false;
-      let zoomMoved = false;
 
       kairosPerf.time("camera", "camera:tick", () => {
-        if (Math.abs(target.x - cam.x) > 0.5) {
-          cam.x = damped(cam.x, target.x, k);
-          camMoved = true;
-        } else if (cam.x !== target.x) {
-          cam.x = target.x;
-        }
-        if (Math.abs(target.y - cam.y) > 0.5) {
-          cam.y = damped(cam.y, target.y, k);
-          camMoved = true;
-        } else if (cam.y !== target.y) {
-          cam.y = target.y;
-        }
-        if (Math.abs(target.zoom - cam.zoom) > 0.0005) {
-          cam.zoom = damped(cam.zoom, target.zoom, k);
-          camMoved = true;
-          zoomMoved = true;
-        } else if (cam.zoom !== target.zoom) {
-          cam.zoom = target.zoom;
-        }
+        camMoved = tickCamera(engine, k);
       });
 
-      if (zoomMoved) {
-        engine.zoomWasMoving = true;
-        if (engine.settleTimer !== null) {
-          window.clearTimeout(engine.settleTimer);
-          engine.settleTimer = null;
-        }
+      // Two layout modes mirroring the two interaction states:
+      //  - fluid (engine.fluid): the layout is frozen as an inert surface. The
+      //    camera alone scales it about the anchored world point while the user
+      //    zooms, so the collection reads as ONE coherent surface -- cards may
+      //    temporarily overflow or pack suboptimally, but nothing "settles"
+      //    under the pointer. No layout solving, no row convergence, no density
+      //    chasing during the gesture.
+      //  - solved (rest): after an idle threshold below, re-pack into the
+      //    optimal layout once and perform a single critically-damped settle.
+      if (
+        !engine.fluid &&
+        Math.abs(engine.camera.zoom - engine.lastGridZ) > GRID_REZ_EPS * Math.max(engine.camera.zoom, 1)
+      ) {
+        engine.lastGridZ = engine.camera.zoom;
+        computeGrid(engine, engine.camera.zoom);
+        camMoved = true;
+        layoutMinimap();
       }
 
-      if (engine.refracting) {
-        if (zoomMoved && now - engine.lastReflowAt >= REFLOW_THROTTLE_MS) {
-          retargetLayout(cam.zoom);
+      // Gesture ended (idle past threshold) → leave fluid mode and solve into
+      // the optimal packing. Snapshot the frozen geometry, solve, snapshot the
+      // target, then let the single settle morph ease cards into their slots.
+      if (
+        engine.fluid &&
+        !zooming &&
+        now - engine.lastZoomInput > SETTLE_IDLE_MS
+      ) {
+        // Capture the user's reading position BEFORE the layout re-solves, so
+        // the settle can compensate for rows resizing around it. The world
+        // anchor's job is over (the gesture is idle) -- stop re-pinning the
+        // camera to that stale world point, which is what pushed the feed
+        // down/up when rows changed height.
+        clearAnchor();
+        const z = engine.camera.zoom;
+        const focusX = engine.viewportW * SETTLE_FOCUS_X;
+        const focusY = engine.viewportH * SETTLE_FOCUS_Y;
+        const wx = (engine.camera.x + focusX) / z;
+        const wy = (engine.camera.y + focusY) / z;
+        const anchorIndex = findCardAtWorld(engine.layoutItems, engine.layoutLength, wx, wy);
+        if (anchorIndex >= 0) {
+          const it = engine.layoutItems[anchorIndex];
+          settleAnchorRef.current = {
+            index: anchorIndex,
+            nx: it.w > 0 ? (wx - it.x) / it.w : 0.5,
+            ny: it.h > 0 ? (wy - it.y) / it.h : 0.5,
+            focusX,
+            focusY,
+          };
+        } else {
+          settleAnchorRef.current = null;
         }
-        const tgt = engine.reflowTargets;
-        let any = false;
-        if (tgt && tgt.length === engine.layoutItems.length) {
-          const zs = cam.zoom;
-          const vw = engine.viewportW;
-          const vh = engine.viewportH;
-          for (let i = 0; i < engine.layoutItems.length; i += 1) {
-            const t = tgt[i];
-            const c = engine.layoutItems[i];
-            const baseCap = VELOCITY_CLAMP_CARDS * Math.max(t.w, 1);
-            const cap = (delta: number) => Math.max(baseCap, Math.abs(delta) * k);
-            const dist = Math.min(
-              1,
-              Math.hypot((c.x + c.w / 2) * zs - cam.x - vw / 2, (c.y + c.h / 2) * zs - cam.y - vh / 2) /
-                Math.max(vw, vh, 1)
-            );
-            const kk = k * (1 + SETTLE_PROPAGATION * (0.5 - dist));
-            const dx = clampVel((t.x - c.x) * kk, cap(t.x - c.x));
-            const dy = clampVel((t.y - c.y) * kk, cap(t.y - c.y));
-            const dw = clampVel((t.w - c.w) * kk, cap(t.w - c.w));
-            const dh = clampVel((t.h - c.h) * kk, cap(t.h - c.h));
-            c.x += dx;
-            c.y += dy;
-            c.w += dw;
-            c.h += dh;
-            if (Math.abs(dx * zs) > 0.1 || Math.abs(dy * zs) > 0.1 || Math.abs(dw * zs) > 0.1 || Math.abs(dh * zs) > 0.1) {
-              any = true;
-            }
-          }
-        }
-        if (!any) {
-          engine.refracting = false;
-          engine.reflowTargets = null;
-        }
-        camMoved = camMoved || any;
-      } else if (zoomMoved) {
-        if (now - engine.lastReflowAt >= REFLOW_THROTTLE_MS) {
-          retargetLayout(cam.zoom);
+        engine.fluid = false;
+        engine.solveW0 = engine.worldW;
+        engine.solveH0 = engine.worldH;
+        captureLayout(engine);
+        computeGrid(engine, engine.camera.zoom);
+        engine.solveW1 = engine.worldW;
+        engine.solveH1 = engine.worldH;
+        captureTarget(engine);
+        engine.solveT = 0;
+        engine.lastGridZ = engine.camera.zoom;
+        camMoved = true;
+      }
+
+      // Single settle morph: ease layoutItems from the frozen snapshot toward
+      // the solved target with one critically-damped progression. Cards glide
+      // into place exactly once; no re-settling while the gesture is live.
+      // Guarded on !engine.fluid: while a gesture is active the layout must be
+      // immutable, so a settle can NEVER mutate geometry mid-gesture.
+      if (!engine.fluid && engine.solveT >= 0) {
+        const t = Math.min(1, Math.max(0, engine.solveT / SETTLE_MS));
+        const eased = criticalSettle(t);
+        morphSettle(engine, eased);
+        engine.solveT += dt;
+        if (engine.solveT >= SETTLE_MS) {
+          morphSettle(engine, 1);
+          engine.solveT = -1;
         }
         camMoved = true;
-      } else if (engine.settleTimer === null) {
-        scheduleReflow();
+
+        // Follow the captured reading card through the morph: each frame the
+        // card's interpolated position is kept at the same screen focus point,
+        // so rows resizing above/below it do not push the viewport up or down.
+        const settle = settleAnchorRef.current;
+        if (settle) {
+          const item = engine.layoutItems[settle.index];
+          if (item && item.w > 0 && item.h > 0) {
+            const ax = item.x + settle.nx * item.w;
+            const ay = item.y + settle.ny * item.h;
+            const camX = ax * engine.camera.zoom - settle.focusX;
+            const camY = ay * engine.camera.zoom - settle.focusY;
+            engine.camera.x = camX;
+            engine.camera.y = camY;
+            engine.target.x = camX;
+            engine.target.y = camY;
+          }
+        }
+      } else {
+        settleAnchorRef.current = null;
       }
 
-      if (!zoomMoved && engine.zoomWasMoving) {
-        engine.zoomWasMoving = false;
-        retargetLayout(cam.zoom);
-        if (engine.refracting) camMoved = true;
+      // Clamp both camera and target against the freshly-derived world bounds.
+      // NOTE: `target.zoom > camera.zoom` is NOT reliable for detecting a
+      // zoom-in here -- applyZoomAt(instant=true) sets both to the new zoom on
+      // the same event, so they are always equal in this tick. Instead compare
+      // the live zoom to lastGridZ, the zoom the frozen grid was fit to. While
+      // a fluid zoom-IN gesture is active (zoom > that fit basis) the camera is
+      // owned by the interaction and the collection is allowed to overflow every
+      // viewport edge (magnifier), so clamping is skipped -- cards extend past
+      // left, right, top and bottom. A fluid zoom-OUT sits below the fit basis,
+      // so the world is narrower than the viewport and clamping centers it (the
+      // "whole strip in the middle" behavior). Once the gesture ends (fluid=false)
+      // and the fit-to-width layout is recomputed, clamping always resumes and
+      // pulls the camera back into legal bounds. Evaluate BOTH camera and target
+      // unconditionally: clamping the camera at a boundary returns true every
+      // frame, and an `||` short-circuit would then skip clamping the target,
+      // leaving it frozen off-screen and the loop animating forever (never
+      // reaching the settle branch that drains pending content).
+      const magnifyOverflow = engine.fluid && engine.camera.zoom > engine.lastGridZ;
+      let clamped = false;
+      if (!magnifyOverflow) {
+        if (hardClampCamera(engine, engine.camera)) clamped = true;
+        if (hardClampCamera(engine, engine.target)) clamped = true;
+      }
+      if (clamped) {
+        camMoved = true;
       }
 
-      if (camMoved) {
-        hardClamp(cam);
-        hardClamp(target);
-        kairosPerf.frame("camera", engine.activeMap.size, engine.layoutItems.length, dt);
-        renderVisibleItems();
+      // World-anchored zoom: while an anchor is active (during the gesture and
+      // the post-gesture settle) the camera is owned by the interaction and
+      // re-pinned so the world point captured at gesture start stays under the
+      // cursor. This runs AFTER the settle morph and boundary clamp so it sees
+      // the CURRENT world bounds each frame: the anchored camera is clamped to
+      // legal bounds FIRST, so the world point is preserved exactly whenever
+      // that position is inside the world, and degrades gracefully (minimal
+      // error, no exposed empty world) only when the layout can no longer
+      // contain it -- it never overrides the boundary clamp. Clamping here also
+      // makes the re-pin idempotent: once the settled layout is reached the
+      // camera converges and the anchor is dropped instead of fighting the
+      // clamp forever.
+      const anchor = anchorRef.current;
+      if (anchor) {
+        const z = engine.camera.zoom;
+        const cam = cameraForAnchor(anchor, z);
+        // While a zoom-IN gesture is live (magnifying past the fit basis) the
+        // anchored camera is NOT clamped so the anchored world point stays
+        // exactly under the cursor and the cards may overflow every edge.
+        // Zoom-out and the post-gesture settle keep clamping so the camera never
+        // dangles past the settled world bounds.
+        if (!magnifyOverflow) hardClampCamera(engine, cam);
+        const movedX = Math.abs(cam.x - engine.camera.x) > GRID_REZ_EPS * Math.max(z, 1);
+        const movedY = Math.abs(cam.y - engine.camera.y) > GRID_REZ_EPS * Math.max(z, 1);
+        if (movedX || movedY) {
+          engine.camera.x = cam.x;
+          engine.camera.y = cam.y;
+          engine.target.x = cam.x;
+          engine.target.y = cam.y;
+          camMoved = true;
+        }
+      }
+
+      // Always render every tick while a fluid gesture is live. During a zoom
+      // the grid is frozen and applyZoomAt(instant) stamps camera AND target to
+      // the anchored values together, so `camMoved` is false even though the
+      // zoom (and thus the card-scale + anchor position) genuinely changed.
+      // Treating the gesture as always-dirty is what actually paints the
+      // magnified frame -- cards grow outward from the anchor and overflow the
+      // viewport edges -- instead of waiting for the post-idle settle re-pack.
+      if (camMoved || engine.fluid) {
+        kairosPerf.frame("camera", activeMapSize(), engine.layoutLength, dt);
+        renderFrame();
         updateMinimap();
-        if (zoomMoved) setZoomPercent(Math.round(cam.zoom * 100));
+        if (Math.round(engine.camera.zoom * 100) !== engine.lastZoomUI) {
+          engine.lastZoomUI = Math.round(engine.camera.zoom * 100);
+          setZoomPercent(Math.round(engine.camera.zoom * 100));
+        }
+        engine.raf = requestAnimationFrame(tick);
+      } else if (engine.solveT >= 0) {
+        // Camera stable but a settle morph may be pending: keep ticking so the
+        // idle-settle check fires.
         engine.raf = requestAnimationFrame(tick);
       } else {
-        engine.raf = null;
         engine.animating = false;
+        engine.raf = null;
+        // Zoom has converged: the anchor's job is done, drop it so subsequent
+        // pans (wheel/drag) are not re-pinned to the stale card.
+        clearAnchor();
+        if (rendererRef.current?.drainPending()) {
+          ensureLoop();
+        }
       }
     };
     engine.raf = requestAnimationFrame(tick);
-  }, [hardClamp, renderVisibleItems, updateMinimap, scheduleReflow, retargetLayout]);
+  }, [renderFrame, layoutMinimap, updateMinimap]);
 
   ensureLoopRef.current = ensureLoop;
 
-  const applyZoomAt = useCallback(
-    (cx: number, cy: number, nextZoom: number) => {
+  const applyZoomAtRef = useCallback(
+    (cx: number, cy: number, nextZoom: number, instant = false, interactive = true) => {
       const engine = engineRef.current;
-      const clamped = clamp(nextZoom, engine.minZoom, engine.maxZoom);
-      if (clamped === engine.target.zoom) return;
-      const cam = engine.camera;
-      const worldX = (cx + cam.x) / cam.zoom;
-      const worldY = (cy + cam.y) / cam.zoom;
-      engine.target.zoom = clamped;
-      engine.target.x = worldX * clamped - cx;
-      engine.target.y = worldY * clamped - cy;
-      hardClamp(engine.target);
+      if (!engine) return;
+      applyZoomAt(engine, cx, cy, nextZoom, instant, interactive);
       ensureLoop();
     },
-    [hardClamp, ensureLoop]
+    [ensureLoop]
   );
 
   const zoomBy = useCallback(
     (steps: number) => {
       const engine = engineRef.current;
-      applyZoomAt(engine.viewportW / 2, engine.viewportH / 2, engine.target.zoom * Math.pow(ZOOM_STEP_FACTOR, steps));
+      if (!engine) return;
+      // Anchor at the last pointer position when available (so +/- zoom toward
+      // the cursor), falling back to the viewport center.
+      const ptr = lastPointerRef.current;
+      const cx = ptr ? ptr.x : engine.viewportW / 2;
+      const cy = ptr ? ptr.y : engine.viewportH / 2;
+      engine.fluid = true;
+      engine.lastZoomInput = performance.now();
+      captureAnchor(cx, cy);
+      applyZoomAtRef(cx, cy, engine.target.zoom * Math.pow(ZOOM_STEP_FACTOR, steps), true);
     },
-    [applyZoomAt]
+    [applyZoomAtRef, captureAnchor]
   );
+
+  const exitFluid = useCallback((engine: SpatialEngine | null) => {
+    if (!engine) return;
+    engine.fluid = false;
+    engine.solveT = -1;
+    engine.solveFrom.length = 0;
+    engine.solveTarget.length = 0;
+  }, []);
 
   const fitWorld = useCallback(() => {
     const engine = engineRef.current;
-    applyZoomAt(engine.viewportW / 2, engine.viewportH / 2, engine.zFit);
-  }, [applyZoomAt]);
+    if (!engine) return;
+    exitFluid(engine);
+    clearAnchor();
+    // Fit frames the entire world, so it is exempt from the interactive zoom
+    // floor and may go down to zFit (6%).
+    applyZoomAtRef(engine.viewportW / 2, engine.viewportH / 2, engine.zFit, false, false);
+  }, [applyZoomAtRef, clearAnchor, exitFluid]);
 
   const detailZoom = useCallback(() => {
     const engine = engineRef.current;
-    applyZoomAt(engine.viewportW / 2, engine.viewportH / 2, 1);
-  }, [applyZoomAt]);
+    if (!engine) return;
+    exitFluid(engine);
+    clearAnchor();
+    applyZoomAtRef(engine.viewportW / 2, engine.viewportH / 2, 1);
+  }, [applyZoomAtRef, clearAnchor, exitFluid]);
 
   const resetZoom = useCallback(() => {
     const engine = engineRef.current;
+    if (!engine) return;
+    exitFluid(engine);
+    clearAnchor();
     engine.target.x = 0;
     engine.target.y = 0;
     engine.target.zoom = 1;
-    hardClamp(engine.target);
+    hardClamp();
     ensureLoop();
-  }, [hardClamp, ensureLoop]);
+  }, [hardClamp, ensureLoop, clearAnchor, exitFluid]);
 
   useEffect(() => {
     const viewport = viewportRef.current;
     const minimap = minimapRef.current;
-    const engine = engineRef.current;
     if (!viewport) return;
 
     let cancelled = false;
+    const engine = createSpatialEngine(
+      viewport.clientWidth || window.innerWidth,
+      viewport.clientHeight || window.innerHeight
+    );
+    engineRef.current = engine;
+    const poolSize = isLowSpecDevice() ? 280 : 1100;
+    const renderer = createDomRenderer(worldRef.current!, poolSize, 8);
+    rendererRef.current = renderer;
+    renderer.createPool();
 
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
-      if (!engine.loaded) return;
       const rect = viewport.getBoundingClientRect();
       const cx = event.clientX - rect.left;
       const cy = event.clientY - rect.top;
 
       if (event.ctrlKey) {
-        engine.wheelAccum += event.deltaY;
-        const steps = Math.trunc(engine.wheelAccum / ZOOM_WHEEL_THRESHOLD);
-        if (steps !== 0) {
-          engine.wheelAccum -= steps * ZOOM_WHEEL_THRESHOLD;
-          applyZoomAt(cx, cy, engine.target.zoom * Math.pow(ZOOM_WHEEL_FACTOR, steps));
+        // Continuous magnifier zoom: every wheel delta maps smoothly onto the
+        // zoom range [interactionMinZoom, maxZoom] (20%..450%), with no discrete
+        // steps. Deltas compose multiplicatively, so a mouse notch or a
+        // trackpad glide both produce a buttery, uninterrupted zoom and the
+        // anchored world point stays under the cursor for the whole gesture.
+        const dy =
+          event.deltaMode === 1
+            ? event.deltaY * 33
+            : event.deltaMode === 2
+              ? event.deltaY * engine.viewportH
+              : event.deltaY;
+        const factor = Math.pow(ZOOM_WHEEL_FACTOR, -dy / ZOOM_WHEEL_PX_PER_STEP);
+        const nextZoom = Math.min(
+          engine.maxZoom,
+          Math.max(engine.interactionMinZoom, engine.target.zoom * factor)
+        );
+        if (Math.abs(nextZoom - engine.target.zoom) > 1e-6) {
+          if (engine.fluidSmooth) {
+            // Experimental smoothed fluid zoom (?zsmooth=1): capture the world
+            // anchor once when the gesture begins and keep it fixed; wheel
+            // events only move target.zoom. The camera advances toward that
+            // target every rAF with a short critically-damped response, so the
+            // gesture is temporally continuous instead of discrete notches.
+            if (!engine.fluid) captureAnchor(cx, cy);
+            engine.fluid = true;
+            engine.lastZoomInput = performance.now();
+            engine.target.zoom = nextZoom;
+            ensureLoop();
+          } else {
+            engine.fluid = true;
+            engine.lastZoomInput = performance.now();
+            captureAnchor(cx, cy);
+            applyZoomAtRef(cx, cy, nextZoom, true);
+          }
         }
         return;
       }
 
+      clearAnchor();
       engine.target.y += event.deltaY;
-      hardClamp(engine.target);
+      hardClampCamera(engine, engine.target);
       ensureLoop();
     };
 
     const onPointerDown = (event: PointerEvent) => {
       if (event.button !== 0) return;
       if ((event.target as HTMLElement).closest(".spatial-minimap")) return;
+      clearAnchor();
       engine.isDragging = true;
       engine.hasDragged = false;
       engine.dragStart = { x: event.clientX, y: event.clientY };
-      engine.dragCam = { x: engine.camera.x, y: engine.camera.y };
+      engine.dragCam = { x: engine.camera.x, y: engine.camera.y, zoom: engine.camera.zoom };
       setDragging(true);
       viewport.setPointerCapture(event.pointerId);
     };
 
     const onPointerMove = (event: PointerEvent) => {
-      if (!engine.isDragging || !engine.dragStart) return;
+      // Track viewport-relative pointer for cursor-anchored button zoom.
+      const rect = viewport.getBoundingClientRect();
+      lastPointerRef.current = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+      if (!engine.isDragging || !engine.dragStart || !engine.dragCam) return;
       const dx = event.clientX - engine.dragStart.x;
       const dy = event.clientY - engine.dragStart.y;
       if (!engine.hasDragged && dx * dx + dy * dy > DRAG_THRESHOLD_SQ) {
         engine.hasDragged = true;
       }
       const zoom = engine.camera.zoom;
+      const maxX = Math.max(0, engine.worldW * zoom - engine.viewportW);
       const maxY = Math.max(0, engine.worldH * zoom - engine.viewportH);
-      engine.target.y = applyResistance(engine.dragCam!.y - dy * DRAG_SPEED, 0, maxY);
+      engine.target.x = applyResistance(engine.dragCam.x - dx * DRAG_SPEED, 0, maxX);
+      engine.target.y = applyResistance(engine.dragCam.y - dy * DRAG_SPEED, 0, maxY);
       ensureLoop();
     };
 
@@ -726,7 +612,7 @@ export function useSpatialViewer() {
       engine.dragStart = null;
       engine.dragCam = null;
       setDragging(false);
-      hardClamp(engine.target);
+      hardClampCamera(engine, engine.target);
       ensureLoop();
       try {
         viewport.releasePointerCapture(event.pointerId);
@@ -738,83 +624,68 @@ export function useSpatialViewer() {
     const onMinimapPointerDown = (event: PointerEvent) => {
       event.stopPropagation();
       const mw = minimapWorldRef.current;
-      if (!mw || !engine.loaded) return;
+      if (!mw) return;
       const rect = mw.getBoundingClientRect();
       const fy = (event.clientY - rect.top) / rect.height;
       const z = engine.camera.zoom;
       engine.target.x = 0;
       engine.target.y = fy * engine.worldH * z - engine.viewportH / 2;
-      hardClamp(engine.target);
+      hardClampCamera(engine, engine.target);
       ensureLoop();
     };
 
-    const snapLayout = () => {
-      const layout = computeLayout(engine.camera.zoom);
-      engine.layoutItems = layout.items;
-      engine.layoutR = layout.rows;
-      engine.solveZoom = engine.camera.zoom;
-      engine.worldW = layout.worldW;
-      engine.worldH = layout.worldH;
-      engine.reflowTargets = null;
-      engine.refracting = false;
-    };
-
     const onWindowResize = () => {
-      if (!engine.loaded) return;
       engine.viewportW = viewport.clientWidth || window.innerWidth;
       engine.viewportH = viewport.clientHeight || window.innerHeight;
-      computeFit();
-      snapLayout();
-      hardClamp(engine.camera);
-      hardClamp(engine.target);
-      renderVisibleItems();
+      // While a fluid gesture is live the layout is an inert surface and must
+      // stay byte-identical — recomputing the grid (or any settle) mid-gesture
+      // would repack cards under the pointer. Update the viewport dims so
+      // culling/camera adapt, but defer the solve: the settle branch and the
+      // rest-state grid recompute below pick up the fresh dims once fluid ends.
+      if (engine.fluid) return;
+      setEngineViewport(engine, engine.viewportW, engine.viewportH);
+      computeGrid(engine, engine.camera.zoom);
+      hardClampCamera(engine, engine.camera);
+      hardClampCamera(engine, engine.target);
+      renderFrame();
       layoutMinimap();
       updateMinimap();
     };
 
     const init = async () => {
-      engine.viewportW = viewport.clientWidth || window.innerWidth;
-      engine.viewportH = viewport.clientHeight || window.innerHeight;
-
-      const response = await apiFetch("/api/bookmarks");
+      // Experimental flag: ?zsmooth=1 enables temporally-continuous fluid zoom
+      // (wheel updates target.zoom only; camera eases toward it each rAF).
+      const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+      engine.fluidSmooth = params?.has("zsmooth") ?? false;
+      // Experimental flag: ?wz=1 renders the fluid gesture as ONE world-container
+      // transform (single camera matrix) instead of per-card style writes.
+      engine.worldTransform = params?.has("wz") ?? false;
+      // Gated instrumentation (`?probe`): expose the engine for external
+      // verification scripts to fingerprint layout geometry mid-gesture.
+      if (params?.has("probe")) {
+        (window as unknown as { __spatialProbe?: { engine: SpatialEngine } }).__spatialProbe = { engine };
+      }
+      const response = await apiFetch("/api/bookmarks?fields=spatial");
       const data = await response.json();
       if (cancelled) return;
-      const bookmarks = (Array.isArray(data) ? data : data.bookmarks || []) as Bookmark[];
-      const withMedia = bookmarks.filter(
-        (bookmark) => bookmark.images && bookmark.images.length > 0
-      );
-      const subset = withMedia.slice(0, PROTOTYPE_COUNT);
-      engine.bookmarks = subset;
-      engine.aspectUnits = subset.map((bookmark) => {
-        const image = bookmark.images?.[0];
-        const aspect = image && image.width > 0 && image.height > 0 ? image.width / image.height : 1;
-        return aspect;
-      });
-      engine.totalAspect = engine.aspectUnits.reduce((sum, aspect) => sum + aspect, 0);
+      const bookmarks = (Array.isArray(data) ? data : data.bookmarks || data.items || []) as Bookmark[];
+      const withMedia = bookmarks.filter((bookmark) => bookmark.images && bookmark.images.length > 0);
+      const subset = withMedia;
 
-      computeFit();
-      engine.maxZoom = MAX_ZOOM;
+      loadEngineBookmarks(engine, subset.map(toGridBookmark));
+      bookmarkMapRef.current = new Map(subset.map((b) => [b.id, toRenderBookmark(b)]));
+
       engine.camera = { x: 0, y: 0, zoom: 1 };
       engine.target = { x: 0, y: 0, zoom: 1 };
-      snapLayout();
-
-      createPool();
-      engine.loaded = true;
+      computeGrid(engine, engine.camera.zoom);
+      engine.lastGridZ = engine.camera.zoom;
       layoutMinimap();
+
       setCount(subset.length);
       setLoaded(true);
       setZoomPercent(100);
-
-      const mountNext = () => {
-        renderVisibleItems(MOUNT_SLICE);
-        if (engineRef.current.hasUnrendered) {
-          engineRef.current.sliceRaf = requestAnimationFrame(mountNext);
-        } else {
-          engineRef.current.sliceRaf = null;
-          updateMinimap();
-        }
-      };
-      mountNext();
+      renderFrame();
+      ensureLoop();
     };
 
     viewport.addEventListener("wheel", onWheel, { passive: false });
@@ -836,26 +707,11 @@ export function useSpatialViewer() {
       viewport.removeEventListener("pointercancel", onPointerUp);
       minimap?.removeEventListener("pointerdown", onMinimapPointerDown);
       window.removeEventListener("resize", onWindowResize);
-      const current = engineRef.current;
-      if (current.raf !== null) cancelAnimationFrame(current.raf);
-      if (current.sliceRaf !== null) cancelAnimationFrame(current.sliceRaf);
-      if (current.settleTimer !== null) window.clearTimeout(current.settleTimer);
-      current.raf = null;
-      current.sliceRaf = null;
-      current.settleTimer = null;
+      if (engine.raf !== null) cancelAnimationFrame(engine.raf);
+      engine.raf = null;
+      renderer.destroy();
     };
-  }, [
-    applyZoomAt,
-    computeFit,
-    computeLayout,
-    createPool,
-    elasticSize,
-    ensureLoop,
-    hardClamp,
-    layoutMinimap,
-    renderVisibleItems,
-    updateMinimap,
-  ]);
+  }, [applyZoomAtRef, ensureLoop, renderFrame, layoutMinimap, updateMinimap, captureAnchor, clearAnchor]);
 
   return {
     refs: {
