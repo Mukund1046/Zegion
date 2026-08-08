@@ -257,10 +257,20 @@ export const createDomRenderer = (
       if (!visibleIds.has(id)) {
         entry.poolEl.style.display = "none";
         const image = entry.poolEl.querySelector<HTMLImageElement>("img");
-        if (image) image.removeAttribute("src");
+        // Reset the recycled card to its canonical skeleton state so a card
+        // waiting on the preload budget never shows stale alt text in place of
+        // the shimmer: clear src AND alt, drop the loaded-content shimmer class
+        // and restore the element-level skeleton (the card's default state in
+        // createPool). Without the alt clear, a recycled card whose content is
+        // deferred to pendingPreload displays the PREVIOUS bookmark's alt text.
+        if (image) {
+          image.removeAttribute("src");
+          image.alt = "";
+        }
         (entry.poolEl as HTMLDivElement & { _media?: HTMLElement })._media?.classList.remove(
           "loading-image"
         );
+        entry.poolEl.classList.add("loading");
         freePool.push(entry.poolEl);
         elToBookmark.delete(entry.poolEl);
         activeMap.delete(id);
