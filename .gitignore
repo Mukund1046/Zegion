@@ -35,6 +35,11 @@ spatial-measure.mjs
 spatial-measure-churn.mjs
 spatial-scrollzoom.mjs
 probe-flip-consistency.mjs
+spatial-buttons-trace.mjs
+spatial-geometry-trace.mjs
+spatial-motion-trace.mjs
+spatial-settle-trace.mjs
+analysis/
 
 # Session captures & scratch
 session-*.md

@@ -36,6 +36,13 @@ export const ZOOM_EASE = 0.44;
  *  wheel gestures read as one unbroken temporal motion instead of discrete
  *  notches, without feeling floaty or overshooting. */
 export const FLUID_ZOOM_TAU = 100;
+/** Idle time (ms) after the last zoom input before the layout re-solves and
+ *  settles into its optimal packing. */
+export const SETTLE_IDLE_MS = 350;
+/** Duration (ms) of the post-gesture single critically-damped packing settle. */
+export const SETTLE_MS = 220;
+/** Stiffness of the critically-damped settle progression (`criticalSettle`). */
+export const SETTLE_W = 6.5;
 
 export type ImageSize = "small" | "medium" | "large";
 
@@ -128,6 +135,19 @@ export interface SpatialEngine {
   solveH0: number;
   solveW1: number;
   solveH1: number;
+  /** Live-tunable motion parameters (DialKit). Read each tick so tuning is
+   *  applied without recreating the engine. Defaults seed from the module
+   *  constants so behavior is unchanged without the tuning panel. */
+  tune: {
+    /** Idle ms after last zoom input before the settle begins (overlap head). */
+    settleIdleMs: number;
+    /** Duration ms of the post-gesture settle morph. */
+    settleMs: number;
+    /** Camera fluid-zoom time constant ms (`?zsmooth=1`). */
+    fluidZoomTau: number;
+    /** Settle spring stiffness w for `criticalSettle`. */
+    settleW: number;
+  };
 }
 
 export const clamp = (value: number, min: number, max: number) =>
@@ -147,12 +167,12 @@ const damped = (current: number, target: number, k: number) =>
 /** Critically-damped settle progression: the layout's single refinement pass
  *  after a zoom gesture ends. One continuous, non-overshooting ease (the
  *  second-order critical step response) so cards glide to their solved slots
- *  exactly once. Normalized so f(0)=0 and f(1)=1. */
-export const criticalSettle = (t: number) => {
+ *  exactly once. Normalized so f(0)=0 and f(1)=1. `w` is the spring stiffness:
+ *  higher converges faster (stiffer), lower is softer/looser. */
+export const criticalSettle = (t: number, w = SETTLE_W) => {
   const t1 = Math.min(1, Math.max(0, t));
   // f(t) = 1 - (1 + w*t)*e^(-w*t), w chosen so it has essentially converged
   // by t=1 while still moving fast enough to feel responsive.
-  const w = 6.5;
   const value = 1 - (1 + w * t1) * Math.exp(-w * t1);
   const end = 1 - (1 + w) * Math.exp(-w);
   return value / end;
@@ -441,6 +461,12 @@ export const createSpatialEngine = (viewportW: number, viewportH: number): Spati
     solveH0: 0,
     solveW1: 0,
     solveH1: 0,
+    tune: {
+      settleIdleMs: SETTLE_IDLE_MS,
+      settleMs: SETTLE_MS,
+      fluidZoomTau: FLUID_ZOOM_TAU,
+      settleW: SETTLE_W,
+    },
   };
 };
 

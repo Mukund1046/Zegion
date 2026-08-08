@@ -205,7 +205,7 @@ class Perf {
       "kairos perf ON",
       `frame  p50 ${s.frames.p50.toFixed(1)}  p95 ${s.frames.p95.toFixed(1)}  max ${s.frames.max.toFixed(1)} ms  (~${fps}fps)`,
     ];
-    for (const label of ["layout", "retarget", "filter:compute", "rebuild:total", "zoom:rebuild", "rebuild:viewportMode", "rebuild:scrubber", "rebuild:state", "rebuild:transition", "rebuild:render", "render:pool", "render:evict", "content:image", "content:body", "tick:spring", "render:visible", "camera:tick"]) {
+    for (const label of ["layout", "retarget", "filter:compute", "rebuild:total", "zoom:rebuild", "rebuild:viewportMode", "rebuild:scrubber", "rebuild:state", "rebuild:transition", "rebuild:render", "render:pool", "render:evict", "content:image", "content:body", "tick:spring", "render:visible", "camera:tick", "cull:visible", "grid:solve", "settle:morph", "frame:render", "frame:total"]) {
       const st = s.spans[label];
       if (st && st.count > 0) {
         lines.push(

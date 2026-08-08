@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/client-api";
 import { isLowSpecDevice } from "@/lib/bookmark-utils";
 import { kairosPerf } from "@/lib/perf";
+import { useDialKit } from "dialkit";
 import type { Bookmark } from "@/lib/types";
 import {
   createSpatialEngine,
@@ -27,7 +28,6 @@ import {
   DRAG_SPEED,
   PAN_EASE,
   ZOOM_EASE,
-  FLUID_ZOOM_TAU,
   GRID_REZ_EPS,
   type VisibleItem,
   type GridItem,
@@ -36,12 +36,6 @@ import {
 } from "@/lib/spatial/spatial-engine";
 import { createDomRenderer, type DomRenderer, type BookmarkForRender, type RenderMode } from "@/lib/spatial/dom-renderer";
 
-/** Idle time after the last zoom input before the layout re-solves and settles
- *  into its optimal packing. The camera alone drives zoom while the user is
- *  gesturing; this is the threshold before the single refinement pass. */
-const SETTLE_IDLE_MS = 350;
-/** Duration of the post-gesture single critically-damped packing settle. */
-const SETTLE_MS = 220;
 /** Horizontal focus of the reading anchor (0.5 = viewport center). */
 const SETTLE_FOCUS_X = 0.5;
 /** Vertical focus of the reading anchor: 40% down the viewport, tuned for feed
@@ -87,6 +81,19 @@ const toRenderBookmark = (bookmark: Bookmark): BookmarkForRender => ({
 });
 
 export function useSpatialViewer() {
+  // Live motion tuning (DialKit): expose the four scheduling knobs as panel
+  // sliders. Values persist across reloads and are pushed into the engine each
+  // change, so the rAF loop reads them live without recreating the engine.
+  const tune = useDialKit("Spatial Settle", {
+    SETTLE_IDLE_MS: [300, 100, 800, 10],
+    SETTLE_MS: [220, 80, 800, 10],
+    FLUID_ZOOM_TAU: [135, 30, 500, 5],
+    criticalSettleW: [6.5, 1, 20, 0.5],
+  }, {
+    id: "spatial-settle",
+    persist: { key: "kairos-spatial-settle" },
+  });
+
   const viewportRef = useRef<HTMLElement>(null);
   const worldRef = useRef<HTMLDivElement>(null);
   const minimapRef = useRef<HTMLDivElement>(null);
@@ -157,7 +164,9 @@ export function useSpatialViewer() {
       world.style.transform = "";
       world.style.willChange = "";
     }
-    cullVisible(engine, visible, visibleIds, worldSpace);
+    kairosPerf.time("spatial", "cull:visible", () => {
+      cullVisible(engine, visible, visibleIds, worldSpace);
+    });
     renderer.render(visible, visibleIds, bookmarkMapRef.current, mode, engine.camera);
   }, []);
 
@@ -228,19 +237,27 @@ export function useSpatialViewer() {
     engine.lastT = performance.now();
 
     const tick = () => {
+      kairosPerf.begin("spatial", "frame:total");
       const now = performance.now();
       const dt = Math.min(Math.max(now - engine.lastT, 0), 50);
       engine.lastT = now;
       const zooming = Math.abs(engine.target.zoom - engine.camera.zoom) > 0.0001;
       const easeBase = zooming ? ZOOM_EASE : PAN_EASE;
-      // Experimental smoothed fluid zoom (?zsmooth=1): during a gesture the
-      // camera eases toward the evolving target with a short critically-damped
-      // exponential (~100ms) so the motion is temporally continuous instead of
-      // discrete notches. All cards still scale as one rigid surface.
-      const k =
-        engine.fluid && engine.fluidSmooth
-          ? 1 - Math.exp(-dt / FLUID_ZOOM_TAU)
-          : 1 - Math.pow(easeBase, dt / 16.667);
+      // Smoothed fluid zoom: the camera eases toward the evolving target with a
+      // short critically-damped exponential (FLUID_ZOOM_TAU) so a gesture drives
+      // temporally-continuous motion instead of discrete notches; all cards still
+      // scale as one rigid surface. The smooth law applies ONLY while a gesture
+      // is live (engine.fluid) or during the settle handoff (solveT >= 0), so
+      // one-shot button targets (Fit / 1:1 / Reset, which set target with
+      // fluid=false and solveT=-1) still ease with the snappy ZOOM_EASE instead
+      // of drifting along the slow gesture response.
+      const smoothActive =
+        engine.fluidSmooth &&
+        zooming &&
+        (engine.fluid || engine.solveT >= 0);
+      const k = smoothActive
+        ? 1 - Math.exp(-dt / engine.tune.fluidZoomTau)
+        : 1 - Math.pow(easeBase, dt / 16.667);
       let camMoved = false;
 
       kairosPerf.time("camera", "camera:tick", () => {
@@ -258,10 +275,14 @@ export function useSpatialViewer() {
       //    optimal layout once and perform a single critically-damped settle.
       if (
         !engine.fluid &&
+        !zooming &&
+        engine.solveT < 0 &&
         Math.abs(engine.camera.zoom - engine.lastGridZ) > GRID_REZ_EPS * Math.max(engine.camera.zoom, 1)
       ) {
         engine.lastGridZ = engine.camera.zoom;
-        computeGrid(engine, engine.camera.zoom);
+        kairosPerf.time("spatial", "grid:solve", () => {
+          computeGrid(engine, engine.camera.zoom);
+        });
         camMoved = true;
         layoutMinimap();
       }
@@ -271,8 +292,7 @@ export function useSpatialViewer() {
       // target, then let the single settle morph ease cards into their slots.
       if (
         engine.fluid &&
-        !zooming &&
-        now - engine.lastZoomInput > SETTLE_IDLE_MS
+        now - engine.lastZoomInput > engine.tune.settleIdleMs
       ) {
         // Capture the user's reading position BEFORE the layout re-solves, so
         // the settle can compensate for rows resizing around it. The world
@@ -302,12 +322,21 @@ export function useSpatialViewer() {
         engine.solveW0 = engine.worldW;
         engine.solveH0 = engine.worldH;
         captureLayout(engine);
-        computeGrid(engine, engine.camera.zoom);
+        kairosPerf.time("spatial", "grid:solve", () => {
+          // Solve for the FINAL resting zoom (target.zoom), not the transient
+          // camera.zoom. With continuous (smooth) zoom the camera lags target
+          // while converging, so solving at camera.zoom bakes a grid fit to a
+          // zoom the camera is only passing through: zoom-out ends with the
+          // world narrower than the viewport (empty space both sides), zoom-in
+          // ends wider (asymmetric overflow). target.zoom is where the camera
+          // comes to rest, so worldW*z == viewportW holds exactly at rest.
+          computeGrid(engine, engine.target.zoom);
+        });
         engine.solveW1 = engine.worldW;
         engine.solveH1 = engine.worldH;
         captureTarget(engine);
         engine.solveT = 0;
-        engine.lastGridZ = engine.camera.zoom;
+        engine.lastGridZ = engine.target.zoom;
         camMoved = true;
       }
 
@@ -317,15 +346,23 @@ export function useSpatialViewer() {
       // Guarded on !engine.fluid: while a gesture is active the layout must be
       // immutable, so a settle can NEVER mutate geometry mid-gesture.
       if (!engine.fluid && engine.solveT >= 0) {
-        const t = Math.min(1, Math.max(0, engine.solveT / SETTLE_MS));
-        const eased = criticalSettle(t);
-        morphSettle(engine, eased);
-        engine.solveT += dt;
-        if (engine.solveT >= SETTLE_MS) {
-          morphSettle(engine, 1);
-          engine.solveT = -1;
-        }
-        camMoved = true;
+        kairosPerf.time("spatial", "settle:morph", () => {
+          const t = Math.min(1, Math.max(0, engine.solveT / engine.tune.settleMs));
+          const eased = criticalSettle(t, engine.tune.settleW);
+          morphSettle(engine, eased);
+          engine.solveT += dt;
+          if (engine.solveT >= engine.tune.settleMs) {
+            morphSettle(engine, 1);
+            engine.solveT = -1;
+            // The settle already solved for target.zoom (the resting zoom) at
+            // settle start and lastGridZ already matches it, so once the camera
+            // finishes converging to target.zoom the rest-drift recompute below
+            // sees no drift and never re-solves a second time within this
+            // gesture (which would be a second layout morph).
+            engine.lastGridZ = engine.target.zoom;
+          }
+          camMoved = true;
+        });
 
         // Follow the captured reading card through the morph: each frame the
         // card's interpolated position is kept at the same screen focus point,
@@ -417,7 +454,9 @@ export function useSpatialViewer() {
       // viewport edges -- instead of waiting for the post-idle settle re-pack.
       if (camMoved || engine.fluid) {
         kairosPerf.frame("camera", activeMapSize(), engine.layoutLength, dt);
-        renderFrame();
+        kairosPerf.time("spatial", "frame:render", () => {
+          renderFrame();
+        });
         updateMinimap();
         if (Math.round(engine.camera.zoom * 100) !== engine.lastZoomUI) {
           engine.lastZoomUI = Math.round(engine.camera.zoom * 100);
@@ -438,6 +477,7 @@ export function useSpatialViewer() {
           ensureLoop();
         }
       }
+      kairosPerf.end("spatial", "frame:total");
     };
     engine.raf = requestAnimationFrame(tick);
   }, [renderFrame, layoutMinimap, updateMinimap]);
@@ -550,11 +590,11 @@ export function useSpatialViewer() {
         );
         if (Math.abs(nextZoom - engine.target.zoom) > 1e-6) {
           if (engine.fluidSmooth) {
-            // Experimental smoothed fluid zoom (?zsmooth=1): capture the world
-            // anchor once when the gesture begins and keep it fixed; wheel
-            // events only move target.zoom. The camera advances toward that
-            // target every rAF with a short critically-damped response, so the
-            // gesture is temporally continuous instead of discrete notches.
+            // Smoothed fluid zoom: capture the world anchor once when the
+            // gesture begins and keep it fixed; wheel events only move
+            // target.zoom. The camera advances toward that target every rAF
+            // with a short critically-damped response, so the gesture is
+            // temporally continuous instead of discrete notches.
             if (!engine.fluid) captureAnchor(cx, cy);
             engine.fluid = true;
             engine.lastZoomInput = performance.now();
@@ -653,10 +693,12 @@ export function useSpatialViewer() {
     };
 
     const init = async () => {
-      // Experimental flag: ?zsmooth=1 enables temporally-continuous fluid zoom
-      // (wheel updates target.zoom only; camera eases toward it each rAF).
+      // Temporally-continuous fluid zoom is the production camera path: wheel
+      // updates target.zoom only and the camera eases toward it each rAF, so a
+      // pinch/wheel gesture drives one continuously-moving camera. Opt out with
+      // ?zinstant=1 to A/B against the old per-event instant-stamp behavior.
       const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
-      engine.fluidSmooth = params?.has("zsmooth") ?? false;
+      engine.fluidSmooth = !params?.has("zinstant");
       // Experimental flag: ?wz=1 renders the fluid gesture as ONE world-container
       // transform (single camera matrix) instead of per-card style writes.
       engine.worldTransform = params?.has("wz") ?? false;
@@ -712,6 +754,17 @@ export function useSpatialViewer() {
       renderer.destroy();
     };
   }, [applyZoomAtRef, ensureLoop, renderFrame, layoutMinimap, updateMinimap, captureAnchor, clearAnchor]);
+
+  // Push live DialKit tuning into the engine. The rAF loop reads
+  // `engine.tune.*` every tick, so adjusting a slider applies the next frame.
+  useEffect(() => {
+    const engine = engineRef.current;
+    if (!engine) return;
+    engine.tune.settleIdleMs = tune.SETTLE_IDLE_MS;
+    engine.tune.settleMs = tune.SETTLE_MS;
+    engine.tune.fluidZoomTau = tune.FLUID_ZOOM_TAU;
+    engine.tune.settleW = tune.criticalSettleW;
+  }, [tune.SETTLE_IDLE_MS, tune.SETTLE_MS, tune.FLUID_ZOOM_TAU, tune.criticalSettleW]);
 
   return {
     refs: {
