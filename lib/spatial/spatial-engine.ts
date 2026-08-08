@@ -43,6 +43,16 @@ export const SETTLE_IDLE_MS = 350;
 export const SETTLE_MS = 220;
 /** Stiffness of the critically-damped settle progression (`criticalSettle`). */
 export const SETTLE_W = 6.5;
+/** Progress threshold (fraction toward 1.0) at which the settle spring is
+ *  considered converged and snaps to the exact target. Cutting the asymptotic
+ *  tail here is what removes the "rows keep drifting" read at zoom-out. */
+export const SETTLE_CONVERGE_EPS = 0.005;
+/** Default gain mapping the gesture-end camera zoom velocity to the settle
+ *  momentum seed (progress/ms). 0 = start from rest (baseline character). */
+export const SETTLE_MOMENTUM_GAIN = 0.15;
+/** Default cap on the momentum seed as a fraction of the spring's critical
+ *  velocity ω. Keeping it < 1 preserves monotonic / non-overshooting motion. */
+export const SETTLE_MOMENTUM_CLAMP = 0.35;
 
 export type ImageSize = "small" | "medium" | "large";
 
@@ -124,8 +134,15 @@ export interface SpatialEngine {
   /** Last timestamp of zoom input (performance.now) for the post-gesture
    *  idle settle. */
   lastZoomInput: number;
-  /** Idle settle morph progress. -1 = not settling, else 0..1. */
+  /** Idle settle morph progress. -1 = not settling, else elapsed ms since start. */
   solveT: number;
+  /** Bounded momentum seed (progress/ms) injected into the settle spring at
+   *  settle start, inherited from the gesture's end camera velocity.
+   *  0 = start from rest (baseline character). */
+  solveSeed: number;
+  /** Frozen EMA (zoom/ms) of camera zoom velocity captured while input was
+   *  active; the bounded momentum signal feeding `solveSeed`. */
+  zoomVel: number;
   /** Geometry snapshot captured at settle start (frozen layout) to morph from. */
   solveFrom: GridItem[];
   /** Solved layout snapshot to morph toward (stable across settle frames). */
@@ -147,6 +164,12 @@ export interface SpatialEngine {
     fluidZoomTau: number;
     /** Settle spring stiffness w for `criticalSettle`. */
     settleW: number;
+    /** Gain mapping gesture-end camera zoom velocity to the settle momentum
+     *  seed (progress/ms). 0 = start from rest. */
+    momentumGain: number;
+    /** Cap on the momentum seed as a fraction of the spring's critical
+     *  velocity ω (settleW / settleMs). < 1 keeps the spring monotonic. */
+    momentumClamp: number;
   };
 }
 
@@ -176,6 +199,53 @@ export const criticalSettle = (t: number, w = SETTLE_W) => {
   const value = 1 - (1 + w * t1) * Math.exp(-w * t1);
   const end = 1 - (1 + w) * Math.exp(-w);
   return value / end;
+};
+
+/**
+ * Closed-form critically-damped settle spring with optional initial velocity.
+ * The layout's single refinement pass after a zoom gesture ends, evaluated on
+ * the shared settle clock `solveT` (ms) so every card glides by the same scalar.
+ * `w` = spring stiffness (same convention as `criticalSettle`, ω = w/settleMs),
+ * `v0` = momentum seed (progress/ms) inherited from the gesture's end camera
+ * velocity; 0 = start from rest. Kept at or below ω, the response stays
+ * monotonic and non-overshooting and converges exactly to the solved layout.
+ */
+export const springSettle = (t: number, w: number, settleMs: number, v0 = 0) => {
+  const omega = settleMs > 0 ? w / settleMs : SETTLE_W / 220;
+  const t1 = Math.max(0, t);
+  const wt = omega * t1;
+  const e = Math.exp(-wt);
+  // Critical step response from x(0)=0, x'(0)=v0 toward x=1.
+  return 1 - (1 + wt) * e + v0 * t1 * e;
+};
+
+/**
+ * Advance the settle spring by `dt` (ms). Returns the eased progress scalar and
+ * whether the spring has converged. Convergence = proximity to the exact solved
+ * layout (within `SETTLE_CONVERGE_EPS`) OR reaching the settleMs ceiling —
+ * `settleMs` caps the duration at the baseline hard-stop so momentum can only
+ * ever pull the settle in EARLIER, never let the asymptotic tail drag it out.
+ * Converged ⇔ eased snaps to 1 (exact grid, no residual drift).
+ */
+export const advanceSettle = (engine: SpatialEngine, dt: number) => {
+  engine.solveT += dt;
+  let eased = springSettle(
+    engine.solveT,
+    engine.tune.settleW,
+    engine.tune.settleMs,
+    engine.solveSeed,
+  );
+  const done = eased >= 1 - SETTLE_CONVERGE_EPS || engine.solveT >= engine.tune.settleMs;
+  if (done) eased = 1;
+  return { eased, done };
+};
+
+/** Bound the momentum seed: gain maps camera zoom velocity (zoom/ms) to a
+ *  progress/ms seed; clamp keeps the spring monotonic (≤ ω). */
+export const seedMomentum = (engine: SpatialEngine) => {
+  const omega = engine.tune.settleMs > 0 ? engine.tune.settleW / engine.tune.settleMs : 0;
+  const raw = Math.abs(engine.zoomVel) * engine.tune.momentumGain;
+  engine.solveSeed = Math.min(raw, omega * engine.tune.momentumClamp);
 };
 
 const elasticSize = (engine: SpatialEngine, z: number) => {
@@ -455,6 +525,8 @@ export const createSpatialEngine = (viewportW: number, viewportH: number): Spati
     worldTransform: false,
     lastZoomInput: 0,
     solveT: -1,
+    solveSeed: 0,
+    zoomVel: 0,
     solveFrom: [],
     solveTarget: [],
     solveW0: 0,
@@ -466,6 +538,8 @@ export const createSpatialEngine = (viewportW: number, viewportH: number): Spati
       settleMs: SETTLE_MS,
       fluidZoomTau: FLUID_ZOOM_TAU,
       settleW: SETTLE_W,
+      momentumGain: SETTLE_MOMENTUM_GAIN,
+      momentumClamp: SETTLE_MOMENTUM_CLAMP,
     },
   };
 };
@@ -484,6 +558,8 @@ export const loadEngineBookmarks = (engine: SpatialEngine, layouts: GridBookmark
   engine.layoutLength = 0;
   engine.fluid = false;
   engine.solveT = -1;
+  engine.solveSeed = 0;
+  engine.zoomVel = 0;
   engine.solveFrom.length = 0;
   engine.solveTarget.length = 0;
   computeFit(engine);

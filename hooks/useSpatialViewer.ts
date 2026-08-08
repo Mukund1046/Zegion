@@ -19,7 +19,8 @@ import {
   captureLayout,
   captureTarget,
   morphSettle,
-  criticalSettle,
+  advanceSettle,
+  seedMomentum,
   cameraForAnchor,
   ZOOM_WHEEL_PX_PER_STEP,
   ZOOM_WHEEL_FACTOR,
@@ -89,6 +90,8 @@ export function useSpatialViewer() {
     SETTLE_MS: [220, 80, 800, 10],
     FLUID_ZOOM_TAU: [135, 30, 500, 5],
     criticalSettleW: [6.5, 1, 20, 0.5],
+    SETTLE_MOMENTUM_GAIN: [0.15, 0, 2, 0.05],
+    SETTLE_MOMENTUM_CLAMP: [0.35, 0, 1, 0.05],
   }, {
     id: "spatial-settle",
     persist: { key: "kairos-spatial-settle" },
@@ -264,6 +267,21 @@ export function useSpatialViewer() {
         camMoved = tickCamera(engine, k);
       });
 
+      // Bounded momentum signal for the settle spring: EMA of the camera's
+      // instantaneous zoom velocity, updated ONLY while input is active (and a
+      // short tail after the last event). Once the gesture goes idle the value
+      // freezes at the end-of-gesture velocity, so the settle inherits the
+      // motion that was already happening instead of restarting from rest. The
+      // raw velocity is never mapped 1:1 into the layout — it only feeds the
+      // clamped, tunable seed below.
+      {
+        const instVel = dt > 0 ? (engine.camera.zoom - engine.lastZoom) / dt : 0;
+        if (now - engine.lastZoomInput < 60) {
+          engine.zoomVel = engine.zoomVel * 0.85 + instVel * 0.15;
+        }
+        engine.lastZoom = engine.camera.zoom;
+      }
+
       // Two layout modes mirroring the two interaction states:
       //  - fluid (engine.fluid): the layout is frozen as an inert surface. The
       //    camera alone scales it about the anchored world point while the user
@@ -336,6 +354,7 @@ export function useSpatialViewer() {
         engine.solveH1 = engine.worldH;
         captureTarget(engine);
         engine.solveT = 0;
+        seedMomentum(engine);
         engine.lastGridZ = engine.target.zoom;
         camMoved = true;
       }
@@ -347,11 +366,14 @@ export function useSpatialViewer() {
       // immutable, so a settle can NEVER mutate geometry mid-gesture.
       if (!engine.fluid && engine.solveT >= 0) {
         kairosPerf.time("spatial", "settle:morph", () => {
-          const t = Math.min(1, Math.max(0, engine.solveT / engine.tune.settleMs));
-          const eased = criticalSettle(t, engine.tune.settleW);
+          // Critically-damped spring on the shared settle clock `solveT`: every
+          // card glides by the same eased scalar, optionally seeded with bounded
+          // momentum from the gesture's end velocity. Convergence is by
+          // proximity (not a fixed-duration window), so zoom-out reaches the
+          // exact solved layout without the slow asymptotic tail.
+          const { eased, done } = advanceSettle(engine, dt);
           morphSettle(engine, eased);
-          engine.solveT += dt;
-          if (engine.solveT >= engine.tune.settleMs) {
+          if (done) {
             morphSettle(engine, 1);
             engine.solveT = -1;
             // The settle already solved for target.zoom (the resting zoom) at
@@ -764,7 +786,9 @@ export function useSpatialViewer() {
     engine.tune.settleMs = tune.SETTLE_MS;
     engine.tune.fluidZoomTau = tune.FLUID_ZOOM_TAU;
     engine.tune.settleW = tune.criticalSettleW;
-  }, [tune.SETTLE_IDLE_MS, tune.SETTLE_MS, tune.FLUID_ZOOM_TAU, tune.criticalSettleW]);
+    engine.tune.momentumGain = tune.SETTLE_MOMENTUM_GAIN;
+    engine.tune.momentumClamp = tune.SETTLE_MOMENTUM_CLAMP;
+  }, [tune.SETTLE_IDLE_MS, tune.SETTLE_MS, tune.FLUID_ZOOM_TAU, tune.criticalSettleW, tune.SETTLE_MOMENTUM_GAIN, tune.SETTLE_MOMENTUM_CLAMP]);
 
   return {
     refs: {
