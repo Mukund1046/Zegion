@@ -43,6 +43,10 @@ const SETTLE_FOCUS_X = 0.5;
  *  reading. During the post-zoom re-pack the camera follows this card so the
  *  user's reading region does not visibly push down/up as rows resize. */
 const SETTLE_FOCUS_Y = 0.4;
+/** Camera-zoom rest tolerance (matches the snap threshold in `tickCamera`):
+ *  once |camera.zoom - target.zoom| drops below this the camera is considered
+ *  converged and the post-settle reading-card pin is released. */
+const SETTLE_ANCHOR_ZOOM_EPS = 0.0001;
 
 /** Find the layout item whose world-space box contains (wx, wy). Returns the
  *  item index, or the nearest item when the point lands in a row gap (fallback
@@ -385,23 +389,42 @@ export function useSpatialViewer() {
           }
           camMoved = true;
         });
+      }
 
-        // Follow the captured reading card through the morph: each frame the
-        // card's interpolated position is kept at the same screen focus point,
-        // so rows resizing above/below it do not push the viewport up or down.
-        const settle = settleAnchorRef.current;
-        if (settle) {
-          const item = engine.layoutItems[settle.index];
-          if (item && item.w > 0 && item.h > 0) {
-            const ax = item.x + settle.nx * item.w;
-            const ay = item.y + settle.ny * item.h;
-            const camX = ax * engine.camera.zoom - settle.focusX;
-            const camY = ay * engine.camera.zoom - settle.focusY;
-            engine.camera.x = camX;
-            engine.camera.y = camY;
-            engine.target.x = camX;
-            engine.target.y = camY;
-          }
+      // Follow the captured reading card through the morph AND through the
+      // camera's post-settle convergence tail: each frame the card's
+      // interpolated position is kept at the same screen focus point, so rows
+      // resizing above/below it do not push the viewport up or down. The pin
+      // is held past the settle end (solveT -> -1) because the camera is still
+      // converging to target.zoom for a few frames after the morph completes
+      // (the fluid law is active during the settle, and the snappy ZOOM_EASE
+      // base continues after) -- dropping it at solveT=-1 lets that late camera
+      // zoom shift the just-settled layout (~3px/fr in the postsettle trace).
+      // Release only once the camera rests at target.zoom. A programmatic
+      // retarget (Fit / 1:1 / Reset) moves target.zoom away from lastGridZ --
+      // the zoom the settle solved for -- so the pin releases immediately and
+      // never follows the unrelated convergence.
+      const settle = settleAnchorRef.current;
+      const settleTargetActive =
+        engine.solveT >= 0 || engine.target.zoom === engine.lastGridZ;
+      if (settle && !engine.fluid && settleTargetActive) {
+        const item = engine.layoutItems[settle.index];
+        if (item && item.w > 0 && item.h > 0) {
+          const ax = item.x + settle.nx * item.w;
+          const ay = item.y + settle.ny * item.h;
+          const camX = ax * engine.camera.zoom - settle.focusX;
+          const camY = ay * engine.camera.zoom - settle.focusY;
+          engine.camera.x = camX;
+          engine.camera.y = camY;
+          engine.target.x = camX;
+          engine.target.y = camY;
+          camMoved = true;
+        }
+        if (
+          engine.solveT < 0 &&
+          Math.abs(engine.camera.zoom - engine.target.zoom) <= SETTLE_ANCHOR_ZOOM_EPS
+        ) {
+          settleAnchorRef.current = null;
         }
       } else {
         settleAnchorRef.current = null;
