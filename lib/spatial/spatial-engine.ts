@@ -43,10 +43,6 @@ export const SETTLE_IDLE_MS = 350;
 export const SETTLE_MS = 220;
 /** Stiffness of the critically-damped settle progression (`criticalSettle`). */
 export const SETTLE_W = 6.5;
-/** Progress threshold (fraction toward 1.0) at which the settle spring is
- *  considered converged and snaps to the exact target. Cutting the asymptotic
- *  tail here is what removes the "rows keep drifting" read at zoom-out. */
-export const SETTLE_CONVERGE_EPS = 0.005;
 /** Default gain mapping the gesture-end camera zoom velocity to the settle
  *  momentum seed (progress/ms). 0 = start from rest (baseline character). */
 export const SETTLE_MOMENTUM_GAIN = 0.15;
@@ -207,37 +203,45 @@ export const criticalSettle = (t: number, w = SETTLE_W) => {
  * the shared settle clock `solveT` (ms) so every card glides by the same scalar.
  * `w` = spring stiffness (same convention as `criticalSettle`, ω = w/settleMs),
  * `v0` = momentum seed (progress/ms) inherited from the gesture's end camera
- * velocity; 0 = start from rest. Kept at or below ω, the response stays
- * monotonic and non-overshooting and converges exactly to the solved layout.
+ * velocity; 0 = start from rest.
+ *
+ * The response is endpoint-normalized so eased(settleMs) === 1 exactly: the
+ * final settle frame lands ON the exact solved geometry, no one-frame snap.
+ * With v0 = 0 this is byte-identical to `criticalSettle` (same raw curve, same
+ * `end` divisor) — only the momentum-enabled path differs.
  */
 export const springSettle = (t: number, w: number, settleMs: number, v0 = 0) => {
   const omega = settleMs > 0 ? w / settleMs : SETTLE_W / 220;
-  const t1 = Math.max(0, t);
-  const wt = omega * t1;
-  const e = Math.exp(-wt);
-  // Critical step response from x(0)=0, x'(0)=v0 toward x=1.
-  return 1 - (1 + wt) * e + v0 * t1 * e;
+  const raw = (x: number) => {
+    const wt = omega * x;
+    const e = Math.exp(-wt);
+    // Critical step response from x(0)=0, x'(0)=v0 toward x=1.
+    return 1 - (1 + wt) * e + v0 * x * e;
+  };
+  const end = raw(settleMs);
+  const eased = raw(Math.max(0, t)) / (end || 1);
+  return Math.min(1, Math.max(0, eased));
 };
 
 /**
  * Advance the settle spring by `dt` (ms). Returns the eased progress scalar and
- * whether the spring has converged. Convergence = proximity to the exact solved
- * layout (within `SETTLE_CONVERGE_EPS`) OR reaching the settleMs ceiling —
- * `settleMs` caps the duration at the baseline hard-stop so momentum can only
- * ever pull the settle in EARLIER, never let the asymptotic tail drag it out.
- * Converged ⇔ eased snaps to 1 (exact grid, no residual drift).
+ * whether the settle has reached its ceiling. Done ⇔ solveT >= settleMs only —
+ * the endpoint-normalized spring already converges to the exact solved layout
+ * continuously at that point, so there is no truncation, no epsilon snap, and
+ * no residual drift. Momentum can only reshape the early curve, never the
+ * destination: the final eased value is exactly 1 at the same ceiling as the
+ * golden baseline, preserving convergence speed.
  */
 export const advanceSettle = (engine: SpatialEngine, dt: number) => {
   engine.solveT += dt;
-  let eased = springSettle(
+  const eased = springSettle(
     engine.solveT,
     engine.tune.settleW,
     engine.tune.settleMs,
     engine.solveSeed,
   );
-  const done = eased >= 1 - SETTLE_CONVERGE_EPS || engine.solveT >= engine.tune.settleMs;
-  if (done) eased = 1;
-  return { eased, done };
+  const done = engine.solveT >= engine.tune.settleMs;
+  return { eased: done ? 1 : eased, done };
 };
 
 /** Bound the momentum seed: gain maps camera zoom velocity (zoom/ms) to a
