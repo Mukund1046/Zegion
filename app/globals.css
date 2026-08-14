@@ -308,6 +308,8 @@ select:focus-visible,
   overflow: hidden;
   border-radius: 24px;
   isolation: isolate;
+  display: flex;
+  flex-direction: column;
 }
 
 .feed-bottom-bar {
@@ -489,7 +491,6 @@ body.dark-mode .action-pill {
   flex-direction: column;
   gap: 8px;
   padding-bottom: 12px;
-  border-bottom: 1px solid var(--border);
 }
 
 .workspace-shell {
@@ -955,7 +956,16 @@ body.dark-mode .proximity-dash.is-active {
    shared theme-transition rule above would interpolate each per-frame write
    over 240ms, low-passing the camera motion and making the flip frame render at
    an intermediate scale instead of the exact contract. Spatial cards therefore
-   animate transform changes imperceptibly instead of transitioning them. */
+   animate transform changes imperceptibly instead of transitioning them.
+
+   FLUID-ZOOM INVARIANT: border-radius/box-shadow/border are intentionally
+   static. The compositor `scale(z)` already magnifies them (a magnified rounded
+   surface has proportionally larger corners — this is the correct rendering).
+   Counter-scaling them via an inherited custom property (e.g. `--spatial-zoom`
+   + `border-radius: calc(12px / var(--spatial-zoom))`) was measured and
+   REJECTED: it forces style recalc + repaint of all ~1,100 cards every zoom
+   frame (3.9x UpdateLayoutTree, 2.4x Paint, ~55% fewer engine frames). Do not
+   reintroduce a var()-driven radius/shadow/border here. */
 .spatial-world .grid-item {
   transition: background 0.24s ease, color 0.24s ease, border-color 0.24s ease;
 }
@@ -1654,12 +1664,7 @@ body.dark-mode .overlay-pop {
   min-height: 0;
   overflow: hidden;
   contain: layout style;
-  cursor: grab;
   touch-action: none;
-}
-
-.spatial-viewport.dragging {
-  cursor: grabbing;
 }
 
 .spatial-world {

@@ -1,5 +1,9 @@
 # Repository Guidelines
 
+## Agent Continuity Pack
+
+Before starting work, read in this order: `docs/PROJECT_STATE.md` → `docs/SYSTEM_MAP.md` → `.agent/CURRENT_STATE.md` → `.agent/HANDOFF.md` → relevant sections of `docs/ARCHITECTURE.md`, `docs/DECISIONS.md`, and `CONVERSATION_KNOWLEDGE.md`. The full index is in the README ("Agent Continuity Pack"). Never modify the spatial camera/settle law, the FLUID-ZOOM INVARIANT (DECISIONS D-01), the feed engine contract, the storage format, or the auth model without explicit approval.
+
 ## Project Structure & Module Organization
 
 This is a self-contained Next.js app for browsing exported X bookmarks. The UI is built with React Server Components and a client-side bookmark viewer hook. Backend logic lives in `lib/`: `export-bookmarks.js` and `sync-folders.js` are spawned as child processes, `config.js` centralizes environment and path resolution for those scripts, `native-config.ts` provides the same for the Next.js runtime, and `server-jobs.ts` orchestrates sync/reindex operations. Static assets are in `public/icons/`. Generated data such as `bookmarks-data.json`, `folders-data.json` live under `data/output/`, and local bookmark JSONL data can go under `data/bookmarks/`.

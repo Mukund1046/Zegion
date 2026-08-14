@@ -7,6 +7,7 @@ import { SmoothInput } from "@/components/ui/skiper-ui/skiper106";
 import ShineText from "@/components/ui/smoothui/shine-text";
 import { ThinkingOrb } from "thinking-orbs";
 import { useBookmarkViewer } from "@/hooks/useBookmarkViewer";
+import SpatialFeed from "@/components/SpatialFeed";
 import type { FacetType, ViewMode } from "@/lib/types";
 import {
   Dialog,
@@ -22,7 +23,6 @@ import { Badge } from "@/components/reui/badge";
 import SyncSettingsDialog from "@/components/ui/sync-settings-dialog";
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { useMediaQuery } from "@/hooks/use-media-query";
 import {
   Search01Icon,
   Cancel01Icon,
@@ -452,13 +452,11 @@ function FeedRegion({
   state,
   actions,
   helpers,
-  mobile,
 }: {
   refs: ReturnType<typeof useBookmarkViewer>["refs"];
   state: ReturnType<typeof useBookmarkViewer>["state"];
   actions: ReturnType<typeof useBookmarkViewer>["actions"];
   helpers: ReturnType<typeof useBookmarkViewer>["helpers"];
-  mobile: boolean;
 }) {
   const bar = useDialKit("Feed Bottom Bar", {
     paddingX: [4, 4, 32, 1],
@@ -471,23 +469,7 @@ function FeedRegion({
   });
 
   const [barHover, setBarHover] = useState(false);
-  const [scrollY, setScrollY] = useState(0);
-  const [scrollMax, setScrollMax] = useState(0);
   const barTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-
-  useEffect(() => {
-    const el = refs.viewportRef.current;
-    if (!el) return;
-    const onScroll = () => {
-      setScrollY(el.scrollTop);
-      setScrollMax(el.scrollHeight - el.clientHeight);
-    };
-    el.addEventListener("scroll", onScroll, { passive: true });
-    onScroll();
-    return () => el.removeEventListener("scroll", onScroll);
-  }, [refs.viewportRef]);
-
-  const showScrollTop = scrollY > 800 && state.feedMode;
 
   const showBar = barHover || state.feedMode === false;
 
@@ -511,66 +493,12 @@ function FeedRegion({
           setBarHover(true);
         }}
       />
-      <main
-        ref={refs.viewportRef}
-        id="viewport"
-        className={`viewport${state.feedMode ? " feed-mode" : ""}`}
-        aria-label="Bookmarks feed"
-      >
-        <div
-          ref={refs.containerRef}
-          id="container"
-          style={
-            state.containerHeight
-              ? { height: `${state.containerHeight}px` }
-              : undefined
-          }
-        >
-          <div
-            ref={refs.gridRef}
-            id="grid"
-            style={{
-              width: state.gridWidth ? `${state.gridWidth}px` : undefined,
-              height: state.gridHeight ? `${state.gridHeight}px` : undefined,
-            }}
-          />
-        </div>
-      </main>
-      <AnimatePresence>
-        {showScrollTop && (
-          <motion.button
-            key="scroll-top"
-            type="button"
-            aria-label="Scroll to top"
-            initial={{ scale: 0, opacity: 0, y: 20 }}
-            animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0, opacity: 0, y: 20 }}
-            transition={{ type: "spring", stiffness: 520, damping: 38 }}
-            onClick={() => refs.viewportRef.current?.scrollTo({ top: 0, behavior: "smooth" })}
-            style={{
-              position: "absolute",
-              bottom: mobile ? 8 : 12,
-              insetInlineEnd: mobile ? 8 : 12,
-              zIndex: 20,
-              width: 40,
-              height: 40,
-              borderRadius: "50%",
-              border: "1px solid var(--border)",
-              background: "var(--popover)",
-              color: "var(--foreground)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: "pointer",
-              boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-            }}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 15l-6-6-6 6" />
-            </svg>
-          </motion.button>
-        )}
-      </AnimatePresence>
+      <SpatialFeed
+        bookmarks={state.displayBookmarks}
+        activeView={state.activeView}
+        onOpenLightbox={actions.openLightbox}
+        onOpenContextMenu={actions.openContextMenu}
+      />
       <div className="feed-bottom-bar">
         <motion.div
           className="overlay-pop"
@@ -625,61 +553,6 @@ function FeedRegion({
             <Image
               className="ui-icon"
               src={helpers.iconPath("cards-01")}
-              alt=""
-              aria-hidden="true"
-              width={bar.iconSize as number}
-              height={bar.iconSize as number}
-              unoptimized
-            />
-          </button>
-        </div>
-        <div
-          className="zoom-toggle"
-          role="group"
-          aria-label="Density"
-          style={{
-            padding: `${bar.togglePadding as number}px`,
-            gap: `${bar.toggleGap as number}px`,
-          }}
-        >
-          <button
-            type="button"
-            aria-label="Zoom out"
-            className="zoom-btn"
-            onClick={() => actions.applyZoom(-1)}
-            disabled={state.zoom <= state.zoomMin}
-            style={{ padding: `${bar.btnPadding as number}px` }}
-          >
-            −
-          </button>
-          <span
-            className="zoom-value"
-            aria-hidden="true"
-            style={{ padding: `${bar.btnPadding as number}px 0` }}
-          >
-            {state.zoomPercent}%
-          </span>
-          <button
-            type="button"
-            aria-label="Zoom in"
-            className="zoom-btn"
-            onClick={() => actions.applyZoom(1)}
-            disabled={state.zoom >= state.zoomMax}
-            style={{ padding: `${bar.btnPadding as number}px` }}
-          >
-            +
-          </button>
-          <button
-            type="button"
-            aria-label="Reset zoom"
-            className="zoom-btn"
-            onClick={() => actions.resetZoom()}
-            disabled={state.zoom === 0}
-            style={{ padding: `${bar.btnPadding as number}px` }}
-          >
-            <Image
-              className="ui-icon"
-              src={helpers.iconPath("arrow-reload-horizontal")}
               alt=""
               aria-hidden="true"
               width={bar.iconSize as number}
@@ -772,11 +645,13 @@ function SearchCommand({
   const pointerMoveCountRef = useRef(0);
   const lastPointeroverCountRef = useRef(0);
   const lastKeyTimeRef = useRef(0);
+  const explicitSelectionRef = useRef(false);
 
   useEffect(() => {
     if (open) {
       setQuery("");
       appliedRef.current = false;
+      explicitSelectionRef.current = false;
     }
   }, [open]);
 
@@ -993,7 +868,7 @@ function SearchCommand({
       handleApplyFacet("domain", filteredDomains[0].name);
     } else if (prefix === "site" && filteredSites.length > 0) {
       handleApplyFacet("site", filteredSites[0].name);
-    } else if (!prefix && bookmarkResults.length > 0 && focusedIndex >= 0 && focusedIndex < bookmarkResults.length) {
+    } else if (!prefix && explicitSelectionRef.current && bookmarkResults.length > 0 && focusedIndex >= 0 && focusedIndex < bookmarkResults.length) {
       const bookmark = bookmarkResults[focusedIndex];
       onOpenChange(false);
       window.open(bookmark.url, "_blank");
@@ -1062,6 +937,7 @@ function SearchCommand({
             onChange={(e) => {
               setQuery(e.target.value);
               setFocusedIndex(0);
+              explicitSelectionRef.current = false;
               stableResultsRef.current = [];
             }}
             onKeyDown={(e) => {
@@ -1069,10 +945,12 @@ function SearchCommand({
               if (e.key === 'ArrowDown') {
                 e.preventDefault();
                 setFocusedIndex((i) => (i < total - 1 ? i + 1 : 0));
+                explicitSelectionRef.current = true;
                 lastKeyTimeRef.current = Date.now();
               } else if (e.key === 'ArrowUp') {
                 e.preventDefault();
                 setFocusedIndex((i) => (i > 0 ? i - 1 : total - 1));
+                explicitSelectionRef.current = true;
                 lastKeyTimeRef.current = Date.now();
               } else if (e.key === 'Enter') {
                 handleEnter();
@@ -1295,6 +1173,7 @@ function SearchCommand({
                           if (Date.now() - lastKeyTimeRef.current > 50) {
                             lastPointeroverCountRef.current = pointerMoveCountRef.current;
                             setFocusedIndex(index);
+                            explicitSelectionRef.current = true;
                           }
                         }}
                       >
@@ -1331,7 +1210,6 @@ function SearchCommand({
 export default function BookmarksViewer() {
   const { refs, state, actions, helpers } = useBookmarkViewer();
   const [searchOpen, setSearchOpen] = useState(false);
-  const isMobile = useMediaQuery("(max-width: 720px)");
   const contextAnchorRef = useRef<HTMLDivElement>(null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copyingRef = useRef(false);
@@ -1406,7 +1284,7 @@ export default function BookmarksViewer() {
             onSearchOpenChange={setSearchOpen}
           />
           <div className="workspace-shell">
-            <FeedRegion refs={refs} state={state} actions={actions} helpers={helpers} mobile={isMobile} />
+            <FeedRegion refs={refs} state={state} actions={actions} helpers={helpers} />
           </div>
         </section>
         <SearchCommand

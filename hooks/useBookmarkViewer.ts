@@ -1330,6 +1330,14 @@ export function useBookmarkViewer() {
     []
   );
 
+  const openContextMenu = useCallback(
+    (bookmark: Bookmark, x: number, y: number) => {
+      setContextMenuBookmark(bookmark);
+      setContextMenuPos({ x, y });
+    },
+    []
+  );
+
   const updateOpenLightboxFrame = useCallback((animateFrame = true) => {
     const engine = engineRef.current;
     const lightboxItem = engine.lightboxItem;
@@ -2441,6 +2449,8 @@ export function useBookmarkViewer() {
       applyZoom,
       resetZoom,
       applyFacet,
+      openLightbox,
+      openContextMenu,
       closeLightbox,
       clearContextMenu: () => {
         setContextMenuBookmark(null);

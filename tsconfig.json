@@ -35,7 +35,10 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
-  "exclude": [
-    "node_modules"
+"exclude": [
+    "node_modules",
+    "spatialv1",
+    "spatialv3",
+    "spatialv4"
   ]
 }

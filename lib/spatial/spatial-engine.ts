@@ -148,6 +148,14 @@ export interface SpatialEngine {
   solveH0: number;
   solveW1: number;
   solveH1: number;
+  /** When content is smaller than the viewport in an axis, center it there
+   *  (canvas prototype) or pin it to that axis's start (document feed).
+   *  Feed surfaces set this to false so a short search/filter result row sits
+   *  at the top-left instead of floating in the middle of the viewport.
+   *  The start-pinning applies only at rest: during an active fluid zoom the
+   *  content is centered so the cursor-anchored pivot is preserved (pinning to
+   *  (0,0) mid-gesture would make zoom-out drift toward the top-left corner). */
+  centerSmallContent: boolean;
   /** Live-tunable motion parameters (DialKit). Read each tick so tuning is
    *  applied without recreating the engine. Defaults seed from the module
    *  constants so behavior is unchanged without the tuning panel. */
@@ -537,6 +545,7 @@ export const createSpatialEngine = (viewportW: number, viewportH: number): Spati
     solveH0: 0,
     solveW1: 0,
     solveH1: 0,
+    centerSmallContent: true,
     tune: {
       settleIdleMs: SETTLE_IDLE_MS,
       settleMs: SETTLE_MS,
@@ -580,8 +589,22 @@ export const hardClampCamera = (engine: SpatialEngine, cam: Camera) => {
   const z = cam.zoom;
   const maxX = Math.max(0, engine.worldW * z - engine.viewportW);
   const maxY = Math.max(0, engine.worldH * z - engine.viewportH);
-  const nx = maxX > 0 ? clamp(cam.x, 0, maxX) : (engine.worldW * z - engine.viewportW) / 2;
-  const ny = maxY > 0 ? clamp(cam.y, 0, maxY) : (engine.worldH * z - engine.viewportH) / 2;
+  // During an active fluid zoom the camera must follow the cursor anchor, so
+  // small content stays centered (prototype semantics) -- pinning to the start
+  // mid-gesture would detach the pivot. Start-pinning only kicks in at rest.
+  const pinStart = !engine.fluid && !engine.centerSmallContent;
+  const nx =
+    maxX > 0
+      ? clamp(cam.x, 0, maxX)
+      : pinStart
+        ? 0
+        : (engine.worldW * z - engine.viewportW) / 2;
+  const ny =
+    maxY > 0
+      ? clamp(cam.y, 0, maxY)
+      : pinStart
+        ? 0
+        : (engine.worldH * z - engine.viewportH) / 2;
   const changed = nx !== cam.x || ny !== cam.y;
   cam.x = nx;
   cam.y = ny;

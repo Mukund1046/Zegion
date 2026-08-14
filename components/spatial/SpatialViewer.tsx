@@ -57,7 +57,7 @@ export default function SpatialViewer() {
       </header>
       <main
         ref={refs.viewportRef}
-        className={`spatial-viewport${state.dragging ? " dragging" : ""}`}
+        className="spatial-viewport"
         aria-label="Spatial bookmarks"
       >
         <div ref={refs.worldRef} className="spatial-world" />
@@ -68,7 +68,7 @@ export default function SpatialViewer() {
         </div>
       </main>
       <footer className="spatial-hint">
-        Scroll — pan · Ctrl+Scroll — zoom · Drag — pan
+        Scroll — pan · Ctrl+Scroll — zoom
       </footer>
     </div>
   );

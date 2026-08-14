@@ -12,7 +12,6 @@ import {
   setEngineViewport,
   applyZoomAt,
   hardClampCamera,
-  applyResistance,
   tickCamera,
   cullVisible,
   computeGrid,
@@ -25,8 +24,6 @@ import {
   ZOOM_WHEEL_PX_PER_STEP,
   ZOOM_WHEEL_FACTOR,
   ZOOM_STEP_FACTOR,
-  DRAG_THRESHOLD_SQ,
-  DRAG_SPEED,
   PAN_EASE,
   ZOOM_EASE,
   GRID_REZ_EPS,
@@ -91,9 +88,9 @@ export function useSpatialViewer() {
   // change, so the rAF loop reads them live without recreating the engine.
   const tune = useDialKit("Spatial Settle", {
     SETTLE_IDLE_MS: [300, 100, 800, 10],
-    SETTLE_MS: [220, 80, 800, 10],
+    SETTLE_MS: [450, 80, 800, 10],
     FLUID_ZOOM_TAU: [135, 30, 500, 5],
-    criticalSettleW: [6.5, 1, 20, 0.5],
+    criticalSettleW: [7, 1, 20, 0.5],
     SETTLE_MOMENTUM_GAIN: [0.15, 0, 2, 0.05],
     SETTLE_MOMENTUM_CLAMP: [0.35, 0, 1, 0.05],
   }, {
@@ -110,7 +107,6 @@ export function useSpatialViewer() {
   const [zoomPercent, setZoomPercent] = useState(100);
   const [count, setCount] = useState(0);
   const [loaded, setLoaded] = useState(false);
-  const [dragging, setDragging] = useState(false);
 
   const engineRef = useRef<SpatialEngine | null>(null);
   const rendererRef = useRef<DomRenderer | null>(null);
@@ -160,6 +156,15 @@ export function useSpatialViewer() {
     //    image layout, DOM) stays IMMUTABLE for the whole gesture — only the
     //    transform changes per frame, so nothing re-layouts or re-rasters. The new
     //    geometry is baked once when the gesture settles (mode flips to "screen").
+    //
+    // FLUID-ZOOM INVARIANT: while `mode === "scale"`, the frame is
+    // compositor-only. No inherited property consumed by any `.grid-item`
+    // descendant may be mutated per frame (a single `--spatial-zoom`-style
+    // custom-property write on `.spatial-world` forces style recalc + repaint of
+    // all ~1,100 cards — measured 3.9x UpdateLayoutTree, 2.4x Paint, ~55% fewer
+    // engine frames). No per-card geometry/style writes; the ONLY per-frame card
+    // write is the compositor `transform` in dom-renderer. New geometry is baked
+    // once on the flip to "screen".
     const mode: RenderMode =
       engine.fluid ? (engine.worldTransform ? "world" : "scale") : "screen";
     const worldSpace = mode !== "screen";
@@ -662,48 +667,20 @@ export function useSpatialViewer() {
     };
 
     const onPointerDown = (event: PointerEvent) => {
-      if (event.button !== 0) return;
-      if ((event.target as HTMLElement).closest(".spatial-minimap")) return;
+      // Pointer-down does nothing on the surface: this is a scroll-driven feed,
+      // so left-click drag is intentionally not a pan gesture. The pointer is
+      // still tracked in onPointerMove for cursor-anchored button zoom.
       clearAnchor();
-      engine.isDragging = true;
-      engine.hasDragged = false;
-      engine.dragStart = { x: event.clientX, y: event.clientY };
-      engine.dragCam = { x: engine.camera.x, y: engine.camera.y, zoom: engine.camera.zoom };
-      setDragging(true);
-      viewport.setPointerCapture(event.pointerId);
     };
 
     const onPointerMove = (event: PointerEvent) => {
       // Track viewport-relative pointer for cursor-anchored button zoom.
       const rect = viewport.getBoundingClientRect();
       lastPointerRef.current = { x: event.clientX - rect.left, y: event.clientY - rect.top };
-      if (!engine.isDragging || !engine.dragStart || !engine.dragCam) return;
-      const dx = event.clientX - engine.dragStart.x;
-      const dy = event.clientY - engine.dragStart.y;
-      if (!engine.hasDragged && dx * dx + dy * dy > DRAG_THRESHOLD_SQ) {
-        engine.hasDragged = true;
-      }
-      const zoom = engine.camera.zoom;
-      const maxX = Math.max(0, engine.worldW * zoom - engine.viewportW);
-      const maxY = Math.max(0, engine.worldH * zoom - engine.viewportH);
-      engine.target.x = applyResistance(engine.dragCam.x - dx * DRAG_SPEED, 0, maxX);
-      engine.target.y = applyResistance(engine.dragCam.y - dy * DRAG_SPEED, 0, maxY);
-      ensureLoop();
     };
 
     const onPointerUp = (event: PointerEvent) => {
-      if (!engine.isDragging) return;
-      engine.isDragging = false;
-      engine.dragStart = null;
-      engine.dragCam = null;
-      setDragging(false);
-      hardClampCamera(engine, engine.target);
-      ensureLoop();
-      try {
-        viewport.releasePointerCapture(event.pointerId);
-      } catch {
-        // ignore
-      }
+      // No-op: kept so the listener registration pairs cleanly with onPointerDown.
     };
 
     const onMinimapPointerDown = (event: PointerEvent) => {
@@ -825,7 +802,6 @@ export function useSpatialViewer() {
       zoomPercent,
       count,
       loaded,
-      dragging,
     },
     actions: {
       zoomBy,

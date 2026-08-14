@@ -5,10 +5,17 @@
  * pipeline and the pool of reused divs. This is the layer a LeaferJS/WebGL
  * backend would replace later, so it only talks in VisibleItem[].
  */
-import { twitterImageUrl } from "@/lib/bookmark-utils";
+import {
+  clamp,
+  formatCount,
+  getTimelineText,
+  lineClampText,
+  twitterImageUrl,
+} from "@/lib/bookmark-utils";
 import { kairosPerf } from "@/lib/perf";
 import type { Camera, VisibleItem, ImageSize } from "@/lib/spatial/spatial-engine";
 import { DOM_WRITE_EPS, imageRank } from "@/lib/spatial/spatial-engine";
+import type { Bookmark } from "@/lib/types";
 
 /** How card geometry is applied this frame.
  *  - `screen`: the camera is baked into screen-space x/y/w/h (rest + settle).
@@ -16,7 +23,13 @@ import { DOM_WRITE_EPS, imageRank } from "@/lib/spatial/spatial-engine";
  *    changes per frame (`translate3d(world*z - cam) scale(z)`). No layout/re-raster
  *    during the fluid gesture — width/height/borders/radius/shadow/DOM are immutable.
  *  - `world`: the whole camera is one container transform (`?wz=1`); cards are
- *    world-positioned with no scale of their own. */
+ *    world-positioned with no scale of their own.
+ *
+ *  FLUID-ZOOM INVARIANT: in `scale` mode the per-card `transform` write in
+ *  renderImpl is the ONLY per-frame style write permitted. Never add geometry,
+ *  background, border-radius, or any `var()`-consumed inherited custom property
+ *  here — it invalidates descendant styles every frame and turns the
+ *  compositor-only gesture into a style/paint cascade (measured). */
 export type RenderMode = "screen" | "scale" | "world";
 
 const IMAGE_SIZES: Record<ImageSize, string> = {
@@ -29,7 +42,14 @@ export interface BookmarkForRender {
   id: string;
   text: string;
   images: { url: string; width: number; height: number }[];
+  /** Present only when the renderer is created with rich mode. Carries the
+   *  original bookmark so Cards-mode content is derived with the exact same
+   *  helpers as the existing masonry card (getTimelineText, formatCount,
+   *  lineClampText) rather than re-deriving different semantics. */
+  bookmark?: Bookmark;
 }
+
+export type RichView = "media" | "card";
 
 interface ActiveEntry {
   poolEl: HTMLDivElement;
@@ -66,14 +86,31 @@ export interface DomRenderer {
    *  Returns true when more work remains and the caller should schedule another pass. */
   drainPending: () => boolean;
   activeMapSize: () => number;
+  /** Resolve the pool element (or a descendant) to its mounted bookmark. */
+  bookmarkForElement: (element: HTMLElement) => BookmarkForRender | undefined;
+  /** Rich mode: switch the baked card representation between media-first and
+   *  full Cards. No-op when the renderer was created without rich mode. */
+  setRichView: (view: RichView) => void;
   destroy: () => void;
+}
+
+export interface DomRendererOptions {
+  /** Enable the rich Cards representation (author/handle, timeline, stats).
+   *  Omit for the default media-only surface used by the /spatial prototype. */
+  rich?: boolean;
+  /** Initial representation in rich mode; the surface keeps it in sync with
+   *  the active view via `setRichView`. */
+  view?: RichView;
 }
 
 export const createDomRenderer = (
   world: HTMLDivElement,
   poolSize: number,
-  preloadBudget = 8
+  preloadBudget = 8,
+  options?: DomRendererOptions
 ): DomRenderer => {
+  const richMode = options?.rich === true;
+  let richView: RichView = options?.view ?? "card";
   const activeMap = new Map<string, ActiveEntry>();
   const elToBookmark = new WeakMap<HTMLDivElement, BookmarkForRender>();
   const imageCache = new Map<string, { src: string; bucket: ImageSize }>();
@@ -83,6 +120,42 @@ export const createDomRenderer = (
 
   const hasMedia = (bookmark: BookmarkForRender) =>
     bookmark.images && bookmark.images.length > 0;
+
+  /** Reset a recycled card back to its canonical skeleton state (clears image
+   *  AND the rich body). Cards waiting on the preload budget must never show a
+   *  previous bookmark's text/badge content or alt. */
+  const resetCardSkeleton = (element: HTMLDivElement) => {
+    const image = element.querySelector<HTMLImageElement>("img");
+    if (image) {
+      image.removeAttribute("src");
+      image.alt = "";
+    }
+    const mediaWrap = (element as HTMLDivElement & { _media?: HTMLElement })._media;
+    mediaWrap?.classList.remove("loading-image");
+    element.classList.remove("loading");
+    if (!richMode) return;
+    const body = element.querySelector<HTMLElement>(".grid-item-body");
+    if (body) {
+      body.style.display = "";
+      const author = body.querySelector<HTMLElement>(".grid-item-author");
+      const handle = body.querySelector<HTMLAnchorElement>(".grid-item-handle");
+      const text = body.querySelector<HTMLElement>(".grid-item-text");
+      const timeline = body.querySelector<HTMLElement>(".grid-item-timeline");
+      const stats = body.querySelector<HTMLElement>(".grid-item-stats");
+      if (author) author.textContent = "";
+      if (handle) {
+        handle.textContent = "";
+        handle.removeAttribute("href");
+      }
+      if (text) text.textContent = "";
+      if (timeline) {
+        timeline.textContent = "";
+        timeline.style.display = "";
+      }
+      if (stats) stats.innerHTML = "";
+    }
+    element.classList.remove("grid-item-card", "grid-item-card-text-only");
+  };
 
   const showEmpty = (element: HTMLDivElement) => {
     const image = element.querySelector<HTMLImageElement>("img");
@@ -102,8 +175,13 @@ export const createDomRenderer = (
   ) => {
     const mediaWrap = (element as HTMLDivElement & { _media?: HTMLElement })._media;
     const image = element.querySelector<HTMLImageElement>("img");
+    const hasImage = hasMedia(bookmark);
 
-    if (!hasMedia(bookmark) || !mediaWrap || !image) {
+    if (richMode) {
+      renderRichBody(element, bookmark);
+    }
+
+    if (!hasImage || !mediaWrap || !image) {
       showEmpty(element);
       return;
     }
@@ -151,6 +229,69 @@ export const createDomRenderer = (
     if (image.src !== desired) image.src = desired;
   };
 
+  /** Rich mode only: bake the existing application card body (author/handle,
+   *  clamped text, timeline, stats) plus the media-first/cards class contract
+   *  into a pool node, using the SAME helper semantics as the existing masonry
+   *  renderer (getTimelineText, formatCount, lineClampText). Runs only at mount
+   *  or rebuild — never during the fluid per-frame transform loop. */
+  const renderRichBody = (
+    element: HTMLDivElement,
+    bookmark: BookmarkForRender
+  ) => {
+    const body = element.querySelector<HTMLElement>(".grid-item-body");
+    const author = element.querySelector<HTMLElement>(".grid-item-author");
+    const handle = element.querySelector<HTMLAnchorElement>(".grid-item-handle");
+    const text = element.querySelector<HTMLElement>(".grid-item-text");
+    const timeline = element.querySelector<HTMLElement>(".grid-item-timeline");
+    const stats = element.querySelector<HTMLElement>(".grid-item-stats");
+    const mediaWrap = (element as HTMLDivElement & { _media?: HTMLElement })._media;
+    const full = bookmark.bookmark;
+    const isCard = richView === "card";
+    const hasImage = hasMedia(bookmark);
+
+    element.classList.toggle("grid-item-card", isCard);
+    element.classList.toggle("grid-item-card-text-only", isCard && !hasImage);
+    if (mediaWrap) {
+      mediaWrap.style.display = isCard && !hasImage ? "none" : "";
+      // Cards mode reserves a clamped media band on top (mirrors the existing
+      // card's imageHeight clamp) so the body has room below; Media mode fills
+      // the whole card via CSS `height:100%`. Reset the inline height in Media
+      // mode so a stale Cards-mode clamp can't leave the image partially
+      // rendered / vertically cropped after a Media<->Cards flip. Runs on every
+      // rich re-render (mount, rebuild, setRichView) -- never the fluid loop.
+      if (isCard && hasImage && full && full.images && full.images[0].height > 0) {
+        const aspect = full.images[0].width / full.images[0].height;
+        const cardWidth = parseFloat(element.style.width) || 0;
+        const imageHeight = cardWidth > 0 ? clamp(cardWidth / aspect, 170, 320) : undefined;
+        mediaWrap.style.height = imageHeight ? `${imageHeight}px` : "";
+      } else {
+        mediaWrap.style.height = "";
+      }
+    }
+    if (body) body.style.display = isCard ? "" : "none";
+
+    if (!isCard || !full || !body) return;
+
+    if (author) author.textContent = full.authorName || `@${full.authorHandle}`;
+    if (handle) {
+      handle.textContent = `@${full.authorHandle}`;
+      handle.href = full.url;
+    }
+    if (text) text.textContent = lineClampText(full.text || "", hasImage ? 150 : 220);
+    if (timeline) {
+      const timelineText = getTimelineText(full);
+      timeline.textContent = timelineText;
+      timeline.style.display = timelineText ? "" : "none";
+    }
+    if (stats) {
+      stats.innerHTML = `
+        <span>Likes ${formatCount(full.likeCount)}</span>
+        <span>Reposts ${formatCount(full.repostCount)}</span>
+        <span>Bookmarks ${formatCount(full.bookmarkCount)}</span>
+      `;
+    }
+  };
+
   const renderImpl = (
     visible: VisibleItem[],
     visibleIds: Set<string>,
@@ -193,6 +334,10 @@ export const createDomRenderer = (
           Math.abs(px - existing.lx) > DOM_WRITE_EPS ||
           Math.abs(py - existing.ly) > DOM_WRITE_EPS
         ) {
+          // FLUID-ZOOM INVARIANT: this transform is the ONLY per-frame style
+          // write allowed in `scale` mode. Do not add geometry, background,
+          // border-radius, or a `var()`-consumed custom property here — every
+          // card would re-resolve its style/paint each zoom frame.
           existing.poolEl.style.transform = transform;
           existing.lx = px;
           existing.ly = py;
@@ -256,20 +401,7 @@ export const createDomRenderer = (
     for (const [id, entry] of activeMap) {
       if (!visibleIds.has(id)) {
         entry.poolEl.style.display = "none";
-        const image = entry.poolEl.querySelector<HTMLImageElement>("img");
-        // Reset the recycled card to its canonical skeleton state so a card
-        // waiting on the preload budget never shows stale alt text in place of
-        // the shimmer: clear src AND alt, drop the loaded-content shimmer class
-        // and restore the element-level skeleton (the card's default state in
-        // createPool). Without the alt clear, a recycled card whose content is
-        // deferred to pendingPreload displays the PREVIOUS bookmark's alt text.
-        if (image) {
-          image.removeAttribute("src");
-          image.alt = "";
-        }
-        (entry.poolEl as HTMLDivElement & { _media?: HTMLElement })._media?.classList.remove(
-          "loading-image"
-        );
+        resetCardSkeleton(entry.poolEl);
         entry.poolEl.classList.add("loading");
         freePool.push(entry.poolEl);
         elToBookmark.delete(entry.poolEl);
@@ -293,7 +425,22 @@ export const createDomRenderer = (
         const element = document.createElement("div");
         element.className = "grid-item loading";
         element.style.display = "none";
-        element.innerHTML = `
+        element.innerHTML = richMode
+          ? `
+          <div class="grid-item-media">
+            <img src="" alt="" loading="lazy" decoding="async">
+          </div>
+          <div class="grid-item-body">
+            <div class="grid-item-head">
+              <div class="grid-item-author"></div>
+              <a class="grid-item-handle" href="#" target="_blank" rel="noopener"></a>
+            </div>
+            <p class="grid-item-text"></p>
+            <div class="grid-item-timeline"></div>
+            <div class="grid-item-stats"></div>
+          </div>
+        `
+          : `
           <div class="grid-item-media">
             <img src="" alt="" loading="lazy" decoding="async">
           </div>
@@ -338,6 +485,21 @@ export const createDomRenderer = (
     },
     activeMapSize() {
       return activeMap.size;
+    },
+    bookmarkForElement(element) {
+      const closest = element.closest(".grid-item");
+      return (
+        elToBookmark.get(element as HTMLDivElement) ??
+        (closest ? elToBookmark.get(closest as HTMLDivElement) : undefined)
+      );
+    },
+    setRichView(view) {
+      if (!richMode) return;
+      richView = view;
+      for (const entry of activeMap.values()) {
+        const bookmark = elToBookmark.get(entry.poolEl);
+        if (bookmark) renderRichBody(entry.poolEl, bookmark);
+      }
     },
     destroy() {
       world.innerHTML = "";

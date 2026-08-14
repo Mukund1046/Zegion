@@ -28,6 +28,9 @@ Bookmarks are synced via [fieldtheory-cli](https://github.com/afar1/fieldtheory-
 - [Quick Start](#-quick-start)
 - [Commands](#-commands)
 - [View Modes](#-view-modes)
+- [Spatial Prototype](#-spatial-prototype)
+- [Agent Continuity Pack](#-agent-continuity-pack)
+- [Remote Access](#-remote-access)
 - [Classification](#-classification)
 - [Project Structure](#-project-structure)
 - [State Preservation](#-state-preservation)
@@ -96,7 +99,7 @@ Open `.env` and set your X cookies. Get them from browser DevTools → Cookies f
 ```env
 X_CT0=your_ct0_here
 X_AUTH_TOKEN=your_auth_token_here
-NEXT_PUBLIC_X_API_KEY=your_api_key_here
+X_API_KEY=your_api_key_here
 ```
 
 ### 3. Sync bookmark folders (optional)
@@ -148,6 +151,86 @@ Image-first masonry grid. Best for fast visual scanning. Click any card to open 
 ### Cards
 
 Compact metadata-rich cards showing image thumbnail (when available), author, handle, tweet text, engagement counts, and timeline dates (Posted / Saved / Synced).
+
+---
+
+## 🔬 Spatial Prototype
+
+A research prototype at **`/spatial`** explores a canvas-style reading model: infinite zoom, compositor-only fluid zoom (magnifier), continuous camera motion, a single post-gesture settle, image LOD buckets, a minimap, and live motion tuning. It is **not** a shipped view mode. To try it:
+
+```bash
+npm run dev
+# open http://localhost:3001/spatial
+```
+
+- Scroll / trackpad — pan · Ctrl+Scroll — zoom
+- `−` / `+` — cursor-anchored step zoom · `Fit` — frame the whole world · `1:1` · `Reset`
+- Click the minimap to jump
+- `?wz=1` — one world-container transform instead of per-card writes
+- `?zinstant=1` — disable continuous fluid zoom (A/B baseline)
+- `?profile` / `Shift+P` — Kairos profiler
+- `?probe` — expose `window.__spatialProbe.engine` for external verification scripts
+
+See `docs/ARCHITECTURE.md`, `docs/DECISIONS.md` (D-01…D-06), and `.agent/` for the engine's invariants and known tradeoffs.
+
+---
+
+## 📚 Agent Continuity Pack
+
+Layered docs for agents and maintainers (see `README` structure note in `AGENTS.md`):
+
+| File | Contents |
+|---|---|
+| `AGENTS.md` | Agent behavior, repo rules, commands |
+| `docs/PROJECT_STATE.md` | Why/what/who; implemented vs not; subsystems |
+| `docs/ARCHITECTURE.md` | Component-level architecture |
+| `docs/DECISIONS.md` | ADR-style decision log (D-01…D-17) |
+| `docs/SYSTEM_MAP.md` | System graph + data flows |
+| `docs/DOMAIN_MODEL.md` | Entities & relationships |
+| `docs/INTEGRATIONS.md` | X / Field Theory / Codex |
+| `docs/SECURITY_MODEL.md` | Threat model & controls |
+| `docs/UX_SPEC.md` | UX principles & interactions |
+| `docs/HISTORY.md` | Architectural evolution |
+| `.agent/CURRENT_STATE.md` | Live project snapshot |
+| `.agent/ACTIVE_TASK.md` | Current task status |
+| `.agent/KNOWN_ISSUES.md` | Issue registry (ISSUE-001…) |
+| `.agent/OPEN_QUESTIONS.md` | Unresolved questions (Q-001…) |
+| `.agent/HANDOFF.md` | Agent handoff |
+| `CONVERSATION_KNOWLEDGE.md` | Provenance-tracked knowledge (K-001…) |
+
+**Bootstrap order for agents:** AGENTS.md → CURRENT_STATE.md → HANDOFF.md → PROJECT_STATE.md → SYSTEM_MAP.md → relevant ARCHITECTURE/DECISIONS sections → CONVERSATION_KNOWLEDGE.md → KNOWN_ISSUES.md → OPEN_QUESTIONS.md → source.
+
+---
+
+## 🌐 Remote Access
+
+Your dev server listens on **3001** (`npm run dev`). To check it from another laptop, use a tunnel (all free):
+
+**Cloudflare Tunnel (no account):**
+```powershell
+winget install --id Cloudflare.cloudflared
+cloudflared tunnel --url http://localhost:3001
+```
+
+**ngrok:**
+```powershell
+winget install --id ngrok.ngrok
+ngrok config add-authtoken <YOUR_TOKEN>
+ngrok http 3001
+```
+
+**Tailscale (constant address, best for repeat use):**
+```powershell
+winget install --id Tailscale.Tailscale
+tailscale up   # add both machines to the same tailnet
+# other laptop: http://<your-tailscale-ip>:3001
+```
+
+**Notes:**
+- Keep `npm run dev` running while testing.
+- In dev, Next.js may block cross-origin dev resources for the tunnel host — add it to `allowedDevOrigins` in `next.config.ts` (dev only).
+- In production, the API is guarded: for non-localhost callers set `X_API_KEY` and send it as the `x-api-key` header (see `SECURITY_MODEL.md`).
+- LAN-only alternative: `npx next dev --port 3001 -H 0.0.0.0`, then use `http://<your-LAN-IP>:3001` on the same Wi-Fi.
 
 ---
 

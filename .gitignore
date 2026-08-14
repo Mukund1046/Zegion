@@ -40,6 +40,12 @@ spatial-geometry-trace.mjs
 spatial-motion-trace.mjs
 spatial-settle-trace.mjs
 analysis/
+postsettle-drift-trace.mjs
+settle-motion-trace.mjs
+spatial-settle-jitter-trace.mjs
+dev-smoke-media.png
+.agent/
+CONVERSATION_KNOWLEDGE.md
 
 # Session captures & scratch
 session-*.md
