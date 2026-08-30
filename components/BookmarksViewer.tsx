@@ -42,6 +42,12 @@ import {
   ContextMenuItem,
   ContextMenuSeparator,
 } from "@/components/ui/context-menu";
+import { SpatialFocusDetails } from "@/components/spatial/SpatialFocusDetails";
+
+// The spatial feed is intentionally Media-only until its Cards control is
+// redesigned. `useSpatialFeed` still supports the card renderer; this is only
+// the surface-level choice exposed by the main feed.
+const SPATIAL_FEED_VIEW: ViewMode = "media";
 
 function ToolbarRegion({
   state,
@@ -92,6 +98,7 @@ function ToolbarRegion({
     dividerColorDark: { type: "color", default: "#262626" },
     popoverFontSize: [12, 10, 24, 1],
     popoverIconSize: [12, 12, 32, 1],
+    letterSpacing: [0, -2, 2, 0.1],
   });
 
   return (
@@ -247,6 +254,7 @@ function ToolbarRegion({
                   borderRadius: 9,
                   padding: `${moreParams.popoverPaddingY as number}px ${moreParams.popoverPaddingX as number}px`,
                   background: moreParams.popoverBg as string,
+                  letterSpacing: `${moreParams.letterSpacing as number}px`,
                 }}
               >
                 <div className="flex flex-col" style={{ gap: moreParams.itemGap as number }}>
@@ -495,74 +503,17 @@ function FeedRegion({
       />
       <SpatialFeed
         bookmarks={state.displayBookmarks}
-        activeView={state.activeView}
+        activeView={SPATIAL_FEED_VIEW}
+        isFilterActive={
+          Boolean(state.activeSearch.trim()) ||
+          state.activeFolder !== "All" ||
+          state.activeFacetType !== "all"
+        }
         onOpenLightbox={actions.openLightbox}
         onOpenContextMenu={actions.openContextMenu}
       />
-      <div className="feed-bottom-bar">
-        <motion.div
-          className="overlay-pop"
-          animate={{ y: showBar ? 0 : 80, opacity: showBar ? 1 : 0 }}
-          transition={{ type: "spring", stiffness: 520, damping: 38 }}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: `${bar.gap as number}px`,
-            padding: `${bar.paddingY as number}px ${bar.paddingX as number}px`,
-            borderRadius: 12,
-            background: "var(--card)",
-          }}
-        >
-        <div
-          className="view-toggle"
-          role="radiogroup"
-          aria-label="Change layout view"
-          style={{
-            padding: `${bar.togglePadding as number}px`,
-            gap: `${bar.toggleGap as number}px`,
-          }}
-        >
-          <button
-            type="button"
-            aria-label="Media view"
-            role="radio"
-            aria-checked={state.activeView === "media"}
-            className={`view-toggle-btn${state.activeView === "media" ? " active" : ""}`}
-            onClick={() => actions.applyView("media" as ViewMode)}
-            style={{ padding: `${bar.btnPadding as number}px` }}
-          >
-            <Image
-              className="ui-icon"
-              src={helpers.iconPath("image-01")}
-              alt=""
-              aria-hidden="true"
-              width={bar.iconSize as number}
-              height={bar.iconSize as number}
-              unoptimized
-            />
-          </button>
-          <button
-            type="button"
-            aria-label="Cards view"
-            role="radio"
-            aria-checked={state.activeView === "card"}
-            className={`view-toggle-btn${state.activeView === "card" ? " active" : ""}`}
-            onClick={() => actions.applyView("card" as ViewMode)}
-            style={{ padding: `${bar.btnPadding as number}px` }}
-          >
-            <Image
-              className="ui-icon"
-              src={helpers.iconPath("cards-01")}
-              alt=""
-              aria-hidden="true"
-              width={bar.iconSize as number}
-              height={bar.iconSize as number}
-              unoptimized
-            />
-          </button>
-        </div>
-      </motion.div>
-      </div>
+      {/* The Media/Cards toggle is intentionally absent. The Cards renderer
+          remains in useSpatialFeed for the later dedicated Cards UI. */}
     </div>
   );
 }
@@ -911,14 +862,17 @@ function SearchCommand({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
-        className="flex flex-col gap-0 overflow-hidden ring-0 sm:max-w-none"
+        className="search-command-dialog flex flex-col gap-0 overflow-hidden ring-0 sm:max-w-none"
         style={{
           width: w,
           maxHeight: mh,
           borderRadius: br,
           background: cmdParams.bgColor as string,
           padding: 0,
-          boxShadow: `0 0 0 1px ${cmdParams.strokeColor}`,
+          // A real border is visually identical to the former zero-blur shadow
+          // in Chrome, but avoids Firefox/Zen's transformed-popup shadow seam.
+          border: `1px solid ${cmdParams.strokeColor}`,
+          boxShadow: "none",
         } as React.CSSProperties}
         showCloseButton={false}
       >
@@ -1208,7 +1162,7 @@ function SearchCommand({
 }
 
 export default function BookmarksViewer() {
-  const { refs, state, actions, helpers } = useBookmarkViewer();
+  const { refs, state, actions, helpers, focus } = useBookmarkViewer() as ReturnType<typeof useBookmarkViewer> & { focus: { focusState: { bookmark: import("@/lib/spatial/dom-renderer").BookmarkForRender | null; phase: "closed" | "opening" | "opened" | "closing"; isActive: boolean; isAnimating: boolean } } };
   const [searchOpen, setSearchOpen] = useState(false);
   const contextAnchorRef = useRef<HTMLDivElement>(null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1293,7 +1247,14 @@ export default function BookmarksViewer() {
           state={state}
           actions={actions}
         />
+        {/* Ripple replaces lightbox on main feed — keep LightboxOverlay mounted for ?noripple fallback but hidden when focus is active */}
         <LightboxOverlay refs={refs} state={state} actions={actions} />
+        <SpatialFocusDetails
+          bookmark={focus.focusState.bookmark}
+          phase={focus.focusState.phase}
+          isActive={focus.focusState.isActive}
+          isAnimating={focus.focusState.isAnimating}
+        />
       </div>
       <div ref={contextAnchorRef} className="fixed pointer-events-none" style={{ width: 1, height: 1 }} />
       {state.contextMenuBookmark && (

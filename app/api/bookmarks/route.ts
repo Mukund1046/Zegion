@@ -17,6 +17,12 @@ export async function GET(request: Request) {
     const bookmarks = data.bookmarks.map((bookmark: Bookmark) => ({
       id: bookmark.id,
       text: bookmark.text || "",
+      authorHandle: bookmark.authorHandle || "",
+      authorName: bookmark.authorName || "",
+      authorAvatar: bookmark.authorAvatar || "",
+      postedAt: bookmark.postedAt || "",
+      bookmarkedAt: bookmark.bookmarkedAt || "",
+      syncedAt: bookmark.syncedAt || "",
       images: (bookmark.images || []).map((image) => ({
         url: image.url,
         width: image.width,

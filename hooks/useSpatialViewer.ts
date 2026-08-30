@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/client-api";
-import { isLowSpecDevice } from "@/lib/bookmark-utils";
+import { cleanPostText, isLowSpecDevice } from "@/lib/bookmark-utils";
 import { kairosPerf } from "@/lib/perf";
 import { useDialKit } from "dialkit";
 import type { Bookmark } from "@/lib/types";
+import { useCardStyle } from "@/hooks/useCardStyle";
+import { useSpatialFocus } from "@/hooks/useSpatialFocus";
 import {
   createSpatialEngine,
   loadEngineBookmarks,
@@ -14,6 +16,7 @@ import {
   hardClampCamera,
   tickCamera,
   cullVisible,
+  computeFit,
   computeGrid,
   captureLayout,
   captureTarget,
@@ -74,12 +77,16 @@ const toGridBookmark = (bookmark: Bookmark) => {
 
 const toRenderBookmark = (bookmark: Bookmark): BookmarkForRender => ({
   id: bookmark.id,
-  text: bookmark.text || "",
+  text: cleanPostText(bookmark.text || ""),
   images: (bookmark.images || []).map((image) => ({
     url: image.url,
     width: image.width,
     height: image.height,
   })),
+  bookmark: {
+    ...bookmark,
+    text: cleanPostText(bookmark.text || ""),
+  },
 });
 
 export function useSpatialViewer() {
@@ -98,6 +105,23 @@ export function useSpatialViewer() {
     persist: { key: "kairos-spatial-settle" },
   });
 
+  // Card radius — CSS-only, never enters the spatial engine.
+  useCardStyle();
+
+  // Grid gap — rest-state layout parameter. The dial's displayed value
+  // updates immediately, but the expensive computeFit → computeGrid → morph
+  // is debounced until the slider settles (220ms) and only runs while idle.
+  // Shared id/persist with the feed surface so tuning either surface tunes
+  // both, but never during fluid zoom.
+  const gridLayout = useDialKit("Grid Layout", {
+    gap: [18, 0, 32, 1],
+  }, {
+    id: "spatial-grid",
+    persist: { key: "kairos-spatial-grid" },
+  });
+  const pendingGapRef = useRef<number | null>(null);
+  const gapDebounceRef = useRef<number | null>(null);
+
   const viewportRef = useRef<HTMLElement>(null);
   const worldRef = useRef<HTMLDivElement>(null);
   const minimapRef = useRef<HTMLDivElement>(null);
@@ -113,6 +137,10 @@ export function useSpatialViewer() {
   const bookmarkMapRef = useRef<Map<string, BookmarkForRender>>(new Map());
   const visibleItemsRef = useRef<VisibleItem[]>([]);
   const ensureLoopRef = useRef<() => void>(() => {});
+  /** Ripple Focus — presentation layer on top of frozen spatial system.
+   *  Uses a fixed-position clone for the selected card and displaces/fades
+   *  existing pool elements. No engine/layout/camera mutation. */
+  const focus = useSpatialFocus(engineRef, viewportRef, worldRef, rendererRef, bookmarkMapRef);
   /** Active world-space interaction anchor (point beneath the cursor captured
    *  when a zoom gesture begins). The camera is re-pinned to this point while
    *  the gesture runs -- cards are not tracked. */
@@ -143,6 +171,7 @@ export function useSpatialViewer() {
   }, []);
 
   const renderFrame = useCallback(() => {
+    if (focus.isActiveRef.current) return;
     const engine = engineRef.current;
     const renderer = rendererRef.current;
     const world = worldRef.current;
@@ -249,6 +278,14 @@ export function useSpatialViewer() {
     engine.lastT = performance.now();
 
     const tick = () => {
+      // Ripple Focus: freeze the spatial system while the presentation is active.
+      // No camera tick, no grid re-solve, no settle morph — the board is inert.
+      if (focus.isActiveRef.current) {
+        engine.animating = false;
+        engine.raf = null;
+        kairosPerf.end("spatial", "frame:total");
+        return;
+      }
       kairosPerf.begin("spatial", "frame:total");
       const now = performance.now();
       const dt = Math.min(Math.max(now - engine.lastT, 0), 50);
@@ -366,6 +403,39 @@ export function useSpatialViewer() {
         seedMomentum(engine);
         engine.lastGridZ = engine.target.zoom;
         camMoved = true;
+      }
+
+      // Deferred grid-gap change requested during fluid zoom or focus.
+      // Never mutates gap or recomputes layout while fluid, settling, or
+      // focus is active; applies exactly once as a normal re-solve/settle
+      // once idle.
+      if (
+        pendingGapRef.current !== null &&
+        !engine.fluid &&
+        engine.solveT < 0 &&
+        !zooming &&
+        !focus.isActiveRef.current
+      ) {
+        const newGap = pendingGapRef.current;
+        pendingGapRef.current = null;
+        if (newGap !== engine.tune.gap) {
+          engine.tune.gap = newGap;
+          engine.solveW0 = engine.worldW;
+          engine.solveH0 = engine.worldH;
+          captureLayout(engine);
+          kairosPerf.time("spatial", "grid:solve", () => {
+            computeFit(engine);
+            computeGrid(engine, engine.target.zoom);
+          });
+          engine.solveW1 = engine.worldW;
+          engine.solveH1 = engine.worldH;
+          captureTarget(engine);
+          engine.solveT = 0;
+          engine.solveSeed = 0;
+          engine.lastGridZ = engine.target.zoom;
+          camMoved = true;
+          layoutMinimap();
+        }
       }
 
       // Single settle morph: ease layoutItems from the frozen snapshot toward
@@ -546,6 +616,7 @@ export function useSpatialViewer() {
 
   const zoomBy = useCallback(
     (steps: number) => {
+      if (focus.isActiveRef.current) return;
       const engine = engineRef.current;
       if (!engine) return;
       // Anchor at the last pointer position when available (so +/- zoom toward
@@ -570,6 +641,7 @@ export function useSpatialViewer() {
   }, []);
 
   const fitWorld = useCallback(() => {
+    if (focus.isActiveRef.current) return;
     const engine = engineRef.current;
     if (!engine) return;
     exitFluid(engine);
@@ -580,6 +652,7 @@ export function useSpatialViewer() {
   }, [applyZoomAtRef, clearAnchor, exitFluid]);
 
   const detailZoom = useCallback(() => {
+    if (focus.isActiveRef.current) return;
     const engine = engineRef.current;
     if (!engine) return;
     exitFluid(engine);
@@ -588,6 +661,7 @@ export function useSpatialViewer() {
   }, [applyZoomAtRef, clearAnchor, exitFluid]);
 
   const resetZoom = useCallback(() => {
+    if (focus.isActiveRef.current) return;
     const engine = engineRef.current;
     if (!engine) return;
     exitFluid(engine);
@@ -616,6 +690,7 @@ export function useSpatialViewer() {
     renderer.createPool();
 
     const onWheel = (event: WheelEvent) => {
+      if (focus.isActiveRef.current) return;
       event.preventDefault();
       const rect = viewport.getBoundingClientRect();
       const cx = event.clientX - rect.left;
@@ -667,6 +742,7 @@ export function useSpatialViewer() {
     };
 
     const onPointerDown = (event: PointerEvent) => {
+      if (focus.isActiveRef.current) return;
       // Pointer-down does nothing on the surface: this is a scroll-driven feed,
       // so left-click drag is intentionally not a pan gesture. The pointer is
       // still tracked in onPointerMove for cursor-anchored button zoom.
@@ -684,6 +760,7 @@ export function useSpatialViewer() {
     };
 
     const onMinimapPointerDown = (event: PointerEvent) => {
+      if (focus.isActiveRef.current) return;
       event.stopPropagation();
       const mw = minimapWorldRef.current;
       if (!mw) return;
@@ -696,7 +773,26 @@ export function useSpatialViewer() {
       ensureLoop();
     };
 
+    const onCardClick = (event: MouseEvent) => {
+      if (focus.isActiveRef.current) return;
+      // Safety: allow instant disable via query param or env
+      const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+      if (params?.has("noripple") || params?.has("disableRipple") || params?.has("no-ripple")) return;
+      const renderer = rendererRef.current;
+      if (!renderer) return;
+      const target = event.target as HTMLElement;
+      const bookmark = renderer.bookmarkForElement(target);
+      if (!bookmark) return;
+      const cardEl = target.closest(".grid-item") as HTMLElement | null;
+      if (!cardEl) return;
+      // Don't trigger focus if the click was on a handle link inside the card
+      if ((target as HTMLElement).closest("a")) return;
+      event.preventDefault();
+      focus.open(bookmark.id, cardEl as HTMLDivElement);
+    };
+
     const onWindowResize = () => {
+      if (focus.isActiveRef.current) return;
       engine.viewportW = viewport.clientWidth || window.innerWidth;
       engine.viewportH = viewport.clientHeight || window.innerHeight;
       // While a fluid gesture is live the layout is an inert surface and must
@@ -757,6 +853,7 @@ export function useSpatialViewer() {
     viewport.addEventListener("pointermove", onPointerMove);
     viewport.addEventListener("pointerup", onPointerUp);
     viewport.addEventListener("pointercancel", onPointerUp);
+    viewport.addEventListener("click", onCardClick);
     minimap?.addEventListener("pointerdown", onMinimapPointerDown);
     window.addEventListener("resize", onWindowResize);
 
@@ -769,11 +866,17 @@ export function useSpatialViewer() {
       viewport.removeEventListener("pointermove", onPointerMove);
       viewport.removeEventListener("pointerup", onPointerUp);
       viewport.removeEventListener("pointercancel", onPointerUp);
+      viewport.removeEventListener("click", onCardClick);
       minimap?.removeEventListener("pointerdown", onMinimapPointerDown);
       window.removeEventListener("resize", onWindowResize);
       if (engine.raf !== null) cancelAnimationFrame(engine.raf);
       engine.raf = null;
       renderer.destroy();
+      // Safety: if focus was active at unmount (e.g., navigating away mid-ripple),
+      // ensure the board is fully restored and not left frozen.
+      if (focus.isActiveRef.current) {
+        focus.close();
+      }
     };
   }, [applyZoomAtRef, ensureLoop, renderFrame, layoutMinimap, updateMinimap, captureAnchor, clearAnchor]);
 
@@ -789,6 +892,77 @@ export function useSpatialViewer() {
     engine.tune.momentumGain = tune.SETTLE_MOMENTUM_GAIN;
     engine.tune.momentumClamp = tune.SETTLE_MOMENTUM_CLAMP;
   }, [tune.SETTLE_IDLE_MS, tune.SETTLE_MS, tune.FLUID_ZOOM_TAU, tune.criticalSettleW, tune.SETTLE_MOMENTUM_GAIN, tune.SETTLE_MOMENTUM_CLAMP]);
+
+  // Grid gap — rest-state only. The dial's displayed value updates
+  // immediately, but the expensive computeFit → computeGrid → morph is
+  // debounced until the slider settles (220ms). Never mutates gap or
+  // triggers layout work during fluid zoom or focus; deferred moves are
+  // drained by the rAF tick above.
+  useEffect(() => {
+    const raw = Number((gridLayout as { gap: unknown }).gap);
+    const newGap = Number.isFinite(raw) ? Math.max(0, Math.min(32, raw)) : 18;
+    const engine = engineRef.current;
+    console.warn(`[gap-effect] newGap ${newGap} engine.gap ${engine?.tune.gap} pending ${pendingGapRef.current} isIdle ${engine ? !engine.fluid && engine.solveT < 0 && !focus.isActiveRef.current : "no eng"}`);
+    if (!engine) return;
+    if (newGap === engine.tune.gap && pendingGapRef.current === null) return;
+
+    if (gapDebounceRef.current !== null) {
+      clearTimeout(gapDebounceRef.current);
+      gapDebounceRef.current = null;
+    }
+
+    const isIdle = !engine.fluid && engine.solveT < 0 && !focus.isActiveRef.current;
+    const zooming = Math.abs(engine.target.zoom - engine.camera.zoom) > 0.0001;
+    if (!isIdle || zooming) {
+      pendingGapRef.current = newGap;
+      return;
+    }
+
+    gapDebounceRef.current = window.setTimeout(() => {
+      gapDebounceRef.current = null;
+      const eng = engineRef.current;
+      if (!eng) {
+        console.warn(`[gap-debounce] no eng at timeout for gap ${newGap}`);
+        return;
+      }
+      const idleNow = !eng.fluid && eng.solveT < 0 && !focus.isActiveRef.current;
+      const zoomingNow = Math.abs(eng.target.zoom - eng.camera.zoom) > 0.0001;
+      console.warn(`[gap-debounce] timeout fired gap ${newGap} idleNow ${idleNow} zoomingNow ${zoomingNow} eng.gap ${eng.tune.gap}`);
+      if (!idleNow || zoomingNow) {
+        pendingGapRef.current = newGap;
+        return;
+      }
+      if (newGap === eng.tune.gap) {
+        console.warn(`[gap-debounce] newGap === eng.gap, skip`);
+        return;
+      }
+      pendingGapRef.current = null;
+      eng.tune.gap = newGap;
+      console.warn(`[gap-debounce] set eng.gap to ${newGap}`);
+      eng.solveW0 = eng.worldW;
+      eng.solveH0 = eng.worldH;
+      captureLayout(eng);
+      kairosPerf.time("spatial", "grid:solve", () => {
+        computeFit(eng);
+        computeGrid(eng, eng.target.zoom);
+      });
+      eng.solveW1 = eng.worldW;
+      eng.solveH1 = eng.worldH;
+      captureTarget(eng);
+      eng.solveT = 0;
+      eng.solveSeed = 0;
+      eng.lastGridZ = eng.target.zoom;
+      ensureLoop();
+      layoutMinimap();
+    }, 220);
+
+    return () => {
+      if (gapDebounceRef.current !== null) {
+        clearTimeout(gapDebounceRef.current);
+        gapDebounceRef.current = null;
+      }
+    };
+  }, [gridLayout.gap, ensureLoop, layoutMinimap]);
 
   return {
     refs: {
@@ -809,5 +983,6 @@ export function useSpatialViewer() {
       detailZoom,
       resetZoom,
     },
+    focus,
   };
 }

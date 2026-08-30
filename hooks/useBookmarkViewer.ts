@@ -11,10 +11,14 @@ import {
   makeGeometryState,
   type GeometryState,
 } from "@/lib/geometry";
+import { useSpatialFocus } from "@/hooks/useSpatialFocus";
+import type { BookmarkForRender } from "@/lib/spatial/dom-renderer";
+import type { DomRenderer } from "@/lib/spatial/dom-renderer";
 import {
   DEFAULT_SORT,
   STORAGE_KEY,
   buildMasonryLayout,
+  cleanPostText,
   clamp,
   escapeHtml,
   formatCount,
@@ -1184,149 +1188,56 @@ export function useBookmarkViewer() {
     updateScrubberMarkerStyles,
   ]);
 
+  // Ripple focus for original feed — replaces lightbox FLIP
+  // Use feedShellRef as world so it finds .grid-item from both masonry (gridRef)
+  // and spatial (SpatialFeed world) — feedMode determines which is visible.
+  const focusEngineRef = useRef({ raf: null as number | null, animating: false });
+  const focusWorldRef = feedShellRef as unknown as React.RefObject<HTMLDivElement | null>;
+  const focusBookmarkMapRef = useRef(new Map<string, BookmarkForRender>());
+  // Keep map in sync with displayBookmarks for focus lookup
+  useEffect(() => {
+    const map = new Map<string, BookmarkForRender>();
+    for (const bm of displayBookmarks) {
+      map.set(bm.id, { id: bm.id, text: cleanPostText(bm.text || ""), images: bm.images || [], bookmark: { ...bm, text: cleanPostText(bm.text || "") } });
+    }
+    focusBookmarkMapRef.current = map;
+  }, [displayBookmarks]);
+  const focusRendererRef = useRef({
+    bookmarkForElement: (el: HTMLElement) => {
+      const gridItem = el.closest(".grid-item") as HTMLDivElement | null;
+      if (!gridItem) return undefined;
+      const bm = engineRef.current.elToBookmark.get(gridItem);
+      if (!bm) return undefined;
+      return focusBookmarkMapRef.current.get(bm.id);
+    },
+  } as unknown as DomRenderer);
+  const focus = useSpatialFocus(focusEngineRef, feedShellRef as unknown as React.RefObject<HTMLElement | null>, focusWorldRef, focusRendererRef, focusBookmarkMapRef as unknown as React.RefObject<Map<string, BookmarkForRender>>);
+
   const openLightbox = useCallback(
     (element: HTMLDivElement, bookmark: Bookmark) => {
-      const engine = engineRef.current;
-      const overlay = overlayRef.current;
-      const lightboxInfo = lightboxInfoRef.current;
-      if (engine.lightboxOpen || engine.lightboxAnimating) return;
-
+      // Prefer ripple if enabled and has image — keep window.open fallback for text-only
       if (!bookmark.images || bookmark.images.length === 0) {
         window.open(bookmark.url, "_blank", "noopener");
         return;
       }
-
-      engine.lightboxAnimating = true;
-      engine.lightboxOpen = true;
-      engine.lightboxItem = { element, bookmark };
-      setLightboxOpen(true);
-
-      const rect = element.getBoundingClientRect();
-      const media = bookmark.images[0];
-      const { width: viewportWidth, height: viewportHeight } = getViewportSize();
-      const targetFrame = getLightboxTargetFrame(media, viewportWidth, viewportHeight);
-
-      const startX = rect.left;
-      const startY = rect.top;
-      const startWidth = rect.width;
-      const startHeight = rect.height;
-      const endX = targetFrame.x;
-      const endY = targetFrame.y;
-      const targetWidth = targetFrame.width;
-      const targetHeight = targetFrame.height;
-      const startScaleX = startWidth / targetWidth;
-      const startScaleY = startHeight / targetHeight;
-
-      element.style.visibility = "hidden";
-
-      if (engine.lightboxClone && engine.lightboxClone.parentNode) {
-        engine.lightboxClone.remove();
-        engine.lightboxClone = null;
-      }
-
-      const clone = element.cloneNode(true) as HTMLDivElement;
-      clone.querySelectorAll<HTMLElement>("*").forEach((child) => {
-        child.style.transition = "none";
-      });
-      const clonedBody = clone.querySelector(".grid-item-body");
-      clonedBody?.remove();
-      const clonedMedia = clone.querySelector<HTMLElement>(".grid-item-media");
-      if (clonedMedia) {
-        clonedMedia.style.height = "100%";
-        clonedMedia.style.background = "#0f0f10";
-      }
-      const clonedImage = clone.querySelector<HTMLImageElement>("img:not(.play-pill-icon)");
-      if (clonedImage) {
-        clonedImage.style.objectFit = "contain";
-        clonedImage.style.background = "#0f0f10";
-      }
-      clone.classList.add("lightbox-active");
-      clone.style.width = `${targetWidth}px`;
-      clone.style.height = `${targetHeight}px`;
-      clone.style.display = "";
-      clone.style.visibility = "visible";
-      clone.style.zIndex = "40001";
-      clone.style.borderRadius = "24px";
-      clone.style.background = "#0f0f10";
-      clone.style.transition = "none";
-      clone.style.transformOrigin = "top left";
-      clone.style.transform = `translate3d(${startX}px, ${startY}px, 0) scale(${startScaleX}, ${startScaleY})`;
-
-      const hiRes = new Image();
-      hiRes.src = twitterImageUrl(bookmark.images[0].url, "4096x4096");
-      hiRes.alt = "";
-      hiRes.style.cssText =
-        "position:absolute;inset:0;width:100%;height:100%;object-fit:contain;border-radius:inherit;background:#0f0f10;opacity:0;transition:opacity 0.12s ease;pointer-events:none;";
-      hiRes.onload = () => {
-        hiRes.style.opacity = "1";
-      };
-      hiRes.onerror = () => hiRes.remove();
-      clone.appendChild(hiRes);
-
-      if (bookmark.images[0].type === "video" || bookmark.images[0].type === "animated_gif") {
-        const playButton = document.createElement("button");
-        playButton.className = "lightbox-play-btn";
-        playButton.innerHTML = `<span class="play-pill"><svg class="play-pill-icon" viewBox="0 0 24 24" fill="none" width="24" height="24"><path d="M18.8906 12.846C18.5371 14.189 16.8667 15.138 13.5257 17.0361C10.296 18.8709 8.6812 19.7884 7.37983 19.4196C6.8418 19.2671 6.35159 18.9776 5.95624 18.5787C5 17.6139 5 15.7426 5 12C5 8.2574 5 6.3861 5.95624 5.42132C6.35159 5.02245 6.8418 4.73288 7.37983 4.58042C8.6812 4.21165 10.296 5.12907 13.5257 6.96393C16.8667 8.86197 18.5371 9.811 18.8906 11.154C19.0365 11.7084 19.0365 12.2916 18.8906 12.846Z" stroke="currentColor" stroke-linejoin="round" stroke-width="1.5"/></svg><span>Play on Twitter</span></span>`;
-        playButton.style.cssText =
-          "position:absolute;inset:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;z-index:2;pointer-events:auto;";
-        playButton.addEventListener("click", (event) => {
-          event.stopPropagation();
-          window.open(bookmark.url, "_blank", "noopener");
-        }, { once: true });
-        clone.appendChild(playButton);
-      }
-
-      document.body.style.overflow = "hidden";
-      document.body.appendChild(clone);
-      engine.lightboxClone = clone;
-      void clone.offsetHeight;
-
-      overlay?.classList.add("active");
-
-      setLightboxTitle(
-        bookmark.text.length > 120 ? `${bookmark.text.substring(0, 120)}…` : bookmark.text
-      );
-      setLightboxLinkHref(bookmark.url);
-      setLightboxLinkText(`@${bookmark.authorHandle}`);
-      setLightboxMeta(getTimelineText(bookmark));
-
-      if (lightboxInfo) {
-        lightboxInfo.style.top = `${targetFrame.infoTop}px`;
-      }
-
-      engine.lightboxItem._startX = startX;
-      engine.lightboxItem._startY = startY;
-      engine.lightboxItem._startW = startWidth;
-      engine.lightboxItem._startH = startHeight;
-      engine.lightboxItem._endX = endX;
-      engine.lightboxItem._endY = endY;
-      engine.lightboxItem._endW = targetWidth;
-      engine.lightboxItem._endH = targetHeight;
-
-      requestAnimationFrame(() => {
-        animate(
-          clone,
-          {
-            transform: [
-              `translate3d(${startX}px, ${startY}px, 0) scale(${startScaleX}, ${startScaleY})`,
-              `translate3d(${endX}px, ${endY}px, 0) scale(1, 1)`,
-            ],
-          },
-          { duration: 0.36, ease: [0.22, 1, 0.36, 1] }
-        ).then(() => {
-          requestAnimationFrame(() => {
-            clone.style.width = `${targetWidth}px`;
-            clone.style.height = `${targetHeight}px`;
-            clone.style.transform = `translate3d(${endX}px, ${endY}px, 0) scale(1, 1)`;
-            engine.lightboxAnimating = false;
-          });
-        });
-
-        setTimeout(() => {
-          clone.querySelector(".play-pill")?.classList.add("visible");
-        }, 200);
-      });
-    },
+      // Try ripple first (works for both masonry and spatial)
+      try {
+        const renderBookmark: BookmarkForRender = {
+          id: bookmark.id,
+          text: cleanPostText(bookmark.text || ""),
+          images: bookmark.images || [],
+          bookmark: { ...bookmark, text: cleanPostText(bookmark.text || "") },
+        };
+        // Ensure the focus map has this bookmark (for direct calls)
+        focusBookmarkMapRef.current.set(bookmark.id, renderBookmark);
+        focus.open(bookmark.id, element);
+        // If focus didn't activate (disabled via flag or not on /spatial), fall back to no-op
+        // Keep lightbox code as fallback only if ripple is disabled
+        if (focus.isActiveRef.current) return;
+      } catch {}
+      // Fallback: if ripple didn’t activate (e.g., ?noripple), do nothing — lightbox removed per migration (see docs/lightbox.md)
+      return;
+  },
     []
   );
 
@@ -2473,5 +2384,6 @@ export function useBookmarkViewer() {
       getSortLabel,
       escapeHtml,
     },
+    focus,
   };
 }

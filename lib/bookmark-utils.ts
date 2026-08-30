@@ -69,6 +69,19 @@ export const lineClampText = (value = "", maxLength = 180) => {
   return `${normalized.slice(0, maxLength).trimEnd()}…`;
 };
 
+export const stripTcoLinks = (value = "") =>
+  value
+    .replace(/https?:\/\/t\.co\/\S+/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+export const cleanPostText = (value = "") => {
+  // Remove auto-appended t.co links and trailing whitespace, keep author content
+  const withoutTco = stripTcoLinks(value);
+  // Also remove trailing "https://t.co" fragments that may have been truncated
+  return withoutTco.replace(/\s+https?:\/\/\S*$/i, "").trim();
+};
+
 export const formatCount = (value = 0) => {
   if (value >= 1000000) return `${(value / 1000000).toFixed(1).replace(/\.0$/, "")}M`;
   if (value >= 1000) return `${(value / 1000).toFixed(1).replace(/\.0$/, "")}K`;

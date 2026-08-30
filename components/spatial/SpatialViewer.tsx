@@ -1,9 +1,10 @@
 "use client";
 
 import { useSpatialViewer } from "@/hooks/useSpatialViewer";
+import { SpatialFocusDetails } from "@/components/spatial/SpatialFocusDetails";
 
 export default function SpatialViewer() {
-  const { refs, state, actions } = useSpatialViewer();
+  const { refs, state, actions, focus } = useSpatialViewer();
 
   return (
     <div className="spatial-shell">
@@ -70,6 +71,12 @@ export default function SpatialViewer() {
       <footer className="spatial-hint">
         Scroll — pan · Ctrl+Scroll — zoom
       </footer>
+      <SpatialFocusDetails
+        bookmark={focus.focusState.bookmark}
+        phase={focus.focusState.phase}
+        isActive={focus.focusState.isActive}
+        isAnimating={focus.focusState.isAnimating}
+      />
     </div>
   );
 }

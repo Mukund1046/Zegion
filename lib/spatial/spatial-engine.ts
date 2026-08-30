@@ -174,6 +174,11 @@ export interface SpatialEngine {
     /** Cap on the momentum seed as a fraction of the spring's critical
      *  velocity ω (settleW / settleMs). < 1 keeps the spring monotonic. */
     momentumClamp: number;
+    /** Rest-state grid gap (px) between cards. Default GAP (18). Tuned via
+     *  the separate "Grid Layout" DialKit panel — a layout parameter, not a
+     *  paint effect. computeGrid/computeFit read this value; the default
+     *  reproduces the golden packing byte-for-byte. */
+    gap: number;
   };
 }
 
@@ -281,8 +286,9 @@ export const computeFit = (engine: SpatialEngine) => {
     engine.sFit = 1;
     return;
   }
-  const B = A * GAP + N * GAP;
-  const C = vw * vh - N * GAP * GAP;
+  const gap = engine.tune?.gap ?? GAP;
+  const B = A * gap + N * gap;
+  const C = vw * vh - N * gap * gap;
   const disc = B * B + 4 * A * C;
   let sFit = (-B + Math.sqrt(disc)) / (2 * A);
   if (!isFinite(sFit) || sFit <= 0) sFit = Math.sqrt((vw * vh) / A);
@@ -301,9 +307,10 @@ export const computeGrid = (engine: SpatialEngine, zoom: number) => {
   const count = engine.bookmarks.length;
   if (count === 0 || vw <= 0) return;
 
+  const gap = engine.tune?.gap ?? GAP;
   const z = zoom > 0 ? zoom : engine.zFit || 1;
   const rowTargetHeight = Math.max(elasticSize(engine, z), MIN_CARD_HEIGHT);
-  const rowAspectCapacity = Math.max((vw - GAP) / rowTargetHeight, 0.5);
+  const rowAspectCapacity = Math.max((vw - gap) / rowTargetHeight, 0.5);
   if (isNaN(rowAspectCapacity) || rowAspectCapacity <= 0) return;
 
   const pre = engine.gridPre;
@@ -324,7 +331,7 @@ export const computeGrid = (engine: SpatialEngine, zoom: number) => {
   starts.push(count);
 
   const items = engine.layoutItems;
-  let y = GAP / 2;
+  let y = gap / 2;
   let slot = 0;
   for (let r = 0; r < starts.length - 1; r += 1) {
     const s = starts[r];
@@ -334,7 +341,7 @@ export const computeGrid = (engine: SpatialEngine, zoom: number) => {
     // Left-align rows of one/small count so a lone card doesn't stretch across
     // the whole viewport. Cap this row's height so the widest card in it never
     // exceeds MAX_CARD_FRACTION of the viewport width.
-    let rowH = (vw - rowCount * GAP) / Math.max(rowSum, 0.00001);
+    let rowH = (vw - rowCount * gap) / Math.max(rowSum, 0.00001);
     let widest = 0;
     for (let i = s; i < n; i += 1) {
       const a = engine.bookmarks[i].aspect;
@@ -342,7 +349,7 @@ export const computeGrid = (engine: SpatialEngine, zoom: number) => {
     }
     const capH = (vw * MAX_CARD_FRACTION) / Math.max(widest, 0.00001);
     if (rowH > capH) rowH = capH;
-    let x = GAP / 2;
+    let x = gap / 2;
     for (let i = s; i < n; i += 1) {
       const width = engine.bookmarks[i].aspect * rowH;
       const item = items[slot];
@@ -352,9 +359,9 @@ export const computeGrid = (engine: SpatialEngine, zoom: number) => {
       item.w = width / z;
       item.h = rowH / z;
       slot += 1;
-      x += width + GAP;
+      x += width + gap;
     }
-    y += rowH + GAP;
+    y += rowH + gap;
   }
 
   engine.worldW = vw / z;
@@ -553,6 +560,7 @@ export const createSpatialEngine = (viewportW: number, viewportH: number): Spati
       settleW: SETTLE_W,
       momentumGain: SETTLE_MOMENTUM_GAIN,
       momentumClamp: SETTLE_MOMENTUM_CLAMP,
+      gap: GAP,
     },
   };
 };

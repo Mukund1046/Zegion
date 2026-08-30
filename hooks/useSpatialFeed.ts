@@ -5,6 +5,7 @@ import { useDialKit } from "dialkit";
 import { isLowSpecDevice } from "@/lib/bookmark-utils";
 import { kairosPerf } from "@/lib/perf";
 import type { Bookmark, ViewMode } from "@/lib/types";
+import { useCardStyle } from "@/hooks/useCardStyle";
 import {
   createSpatialEngine,
   loadEngineBookmarks,
@@ -13,6 +14,7 @@ import {
   hardClampCamera,
   tickCamera,
   cullVisible,
+  computeFit,
   computeGrid,
   captureLayout,
   captureTarget,
@@ -73,10 +75,19 @@ const findCardAtWorld = (items: readonly { x: number; y: number; w: number; h: n
   return best;
 };
 
-const toGridBookmark = (bookmark: Bookmark) => {
+const toGridBookmark = (bookmark: Bookmark, view: ViewMode) => {
   const image = bookmark.images?.[0];
-  const aspect = image && image.width > 0 && image.height > 0 ? image.width / image.height : 1;
-  return { bookmarkId: bookmark.id, aspect };
+  if (image && image.width > 0 && image.height > 0) {
+    // Image cards: sized purely to image aspect in both views.
+    // In card mode the body overlays the bottom of the image (no packing change).
+    return { bookmarkId: bookmark.id, aspect: image.width / image.height };
+  }
+  if (view !== "card") return { bookmarkId: bookmark.id, aspect: 1 };
+  // Text-only card in card view: size to estimated compact content height.
+  const text = bookmark.text || "";
+  const lines = Math.min(3, Math.max(1, Math.ceil(text.length / 34)));
+  const estH = 18 + 6 + lines * 19 + 26;
+  return { bookmarkId: bookmark.id, aspect: 300 / estH };
 };
 
 const toRenderBookmark = (bookmark: Bookmark): BookmarkForRender => ({
@@ -98,6 +109,7 @@ export interface SpatialFeedHandlers {
 export function useSpatialFeed(
   bookmarks: Bookmark[],
   activeView: ViewMode,
+  isFilterActive: boolean,
   handlers: SpatialFeedHandlers
 ) {
   // Live motion tuning (DialKit): same "Spatial Settle" panel the /spatial
@@ -117,6 +129,25 @@ export function useSpatialFeed(
     persist: { key: "kairos-spatial-settle" },
   });
 
+  // Card radius — CSS-only, never enters the spatial engine. Own DialKit panel
+  // so it can be tuned independently from layout. Default 12px matches the
+  // golden CSS, resetting reproduces the baseline byte-for-byte.
+  useCardStyle();
+
+  // Grid gap — rest-state layout parameter (separate DialKit panel from Card
+  // Style). Default 18px matches GAP. The dial's displayed value updates
+  // immediately, but the expensive computeFit → computeGrid → morph is
+  // debounced until the slider settles (220ms) and only runs while idle.
+  // Never mutates gap or triggers layout work during fluid zoom.
+  const gridLayout = useDialKit("Grid Layout", {
+    gap: [18, 0, 32, 1],
+  }, {
+    id: "spatial-grid",
+    persist: { key: "kairos-spatial-grid" },
+  });
+  const pendingGapRef = useRef<number | null>(null);
+  const gapDebounceRef = useRef<number | null>(null);
+
   const viewportRef = useRef<HTMLElement>(null);
   const worldRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<SpatialEngine | null>(null);
@@ -134,6 +165,13 @@ export function useSpatialFeed(
   } | null>(null);
   const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
   const readyRef = useRef(false);
+  /**
+   * Search/filter zoom gate. This deliberately lives outside the engine: it
+   * only decides whether a new interactive zoom input may enter the existing
+   * camera path. The 16–19 range is hysteresis, so changing a result count by
+   * one cannot make the camera behavior flicker.
+   */
+  const zoomInputLockedRef = useRef(false);
   /** The last `bookmarks`/`activeView` handed to the renderer, tracked by
    *  reference so a filter/search/sort that changes content (but not length)
    *  still triggers a rebuild. `displayBookmarks` is rebuilt by the app shell
@@ -145,6 +183,20 @@ export function useSpatialFeed(
   handlersRef.current = handlers;
   const activeViewRef = useRef(activeView);
   activeViewRef.current = activeView;
+
+  useEffect(() => {
+    if (!isFilterActive) {
+      zoomInputLockedRef.current = false;
+      return;
+    }
+
+    if (bookmarks.length <= 15) {
+      zoomInputLockedRef.current = true;
+    } else if (bookmarks.length >= 20) {
+      zoomInputLockedRef.current = false;
+    }
+    // 16–19 intentionally retain their prior gate state.
+  }, [bookmarks.length, isFilterActive]);
 
   const activeMapSize = useCallback(() => rendererRef.current?.activeMapSize?.() ?? 0, []);
 
@@ -277,6 +329,36 @@ export function useSpatialFeed(
         camMoved = true;
       }
 
+      // Deferred grid-gap change that was requested during fluid zoom.
+      // Never mutates gap or recomputes layout while fluid; applies exactly
+      // once as a normal re-solve/settle once idle (and not already settling).
+      if (
+        pendingGapRef.current !== null &&
+        !engine.fluid &&
+        engine.solveT < 0 &&
+        !zooming
+      ) {
+        const newGap = pendingGapRef.current;
+        pendingGapRef.current = null;
+        if (newGap !== engine.tune.gap) {
+          engine.tune.gap = newGap;
+          engine.solveW0 = engine.worldW;
+          engine.solveH0 = engine.worldH;
+          captureLayout(engine);
+          kairosPerf.time("spatial", "grid:solve", () => {
+            computeFit(engine);
+            computeGrid(engine, engine.target.zoom);
+          });
+          engine.solveW1 = engine.worldW;
+          engine.solveH1 = engine.worldH;
+          captureTarget(engine);
+          engine.solveT = 0;
+          engine.solveSeed = 0;
+          engine.lastGridZ = engine.target.zoom;
+          camMoved = true;
+        }
+      }
+
       if (!engine.fluid && engine.solveT >= 0) {
         kairosPerf.time("spatial", "settle:morph", () => {
           const { eased, done } = advanceSettle(engine, dt);
@@ -371,8 +453,16 @@ export function useSpatialFeed(
       const renderer = rendererRef.current;
       if (!engine || !renderer) return;
 
-      loadEngineBookmarks(engine, bookmarksList.map(toGridBookmark));
-      bookmarkMapRef.current = new Map(bookmarksList.map((b) => [b.id, toRenderBookmark(b)]));
+      // Media is the only public spatial view for now. Omit text-only cards
+      // from that surface; the preserved Cards path keeps its content-card
+      // support for the dedicated UI that will re-enable it later.
+      const renderBookmarks =
+        view === "media"
+          ? bookmarksList.filter((bookmark) => bookmark.images?.length)
+          : bookmarksList;
+
+      loadEngineBookmarks(engine, renderBookmarks.map((b) => toGridBookmark(b, view)));
+      bookmarkMapRef.current = new Map(renderBookmarks.map((b) => [b.id, toRenderBookmark(b)]));
       renderer.setRichView(view);
 
       engine.camera = { x: 0, y: 0, zoom: 1 };
@@ -418,6 +508,9 @@ export function useSpatialFeed(
       const cy = event.clientY - rect.top;
 
       if (event.ctrlKey) {
+        // Keep browser pinch gestures from changing a sparse filtered result
+        // set, while still preventing the browser's own page zoom.
+        if (zoomInputLockedRef.current) return;
         const dy =
           event.deltaMode === 1
             ? event.deltaY * 33
@@ -522,6 +615,74 @@ export function useSpatialFeed(
     engine.tune.momentumClamp = tune.SETTLE_MOMENTUM_CLAMP;
   }, [tune.SETTLE_IDLE_MS, tune.SETTLE_MS, tune.FLUID_ZOOM_TAU, tune.criticalSettleW, tune.SETTLE_MOMENTUM_GAIN, tune.SETTLE_MOMENTUM_CLAMP]);
 
+  // Grid gap — rest-state layout parameter. The dial's value updates
+  // immediately in the UI, but the expensive computeFit → computeGrid →
+  // morph is debounced until the slider settles (220ms). Keeps the
+  // existing rest-state protection: never mutates gap or triggers layout
+  // work during fluid zoom, and drains deferred moves via the rAF tick.
+  useEffect(() => {
+    const raw = Number((gridLayout as { gap: unknown }).gap);
+    const newGap = Number.isFinite(raw) ? Math.max(0, Math.min(32, raw)) : 18;
+    const engine = engineRef.current;
+    if (!engine || !readyRef.current) return;
+    if (newGap === engine.tune.gap && pendingGapRef.current === null) return;
+
+    // Clear any pending debounced recomputation from a previous drag tick.
+    if (gapDebounceRef.current !== null) {
+      clearTimeout(gapDebounceRef.current);
+      gapDebounceRef.current = null;
+    }
+
+    const isIdle = !engine.fluid && engine.solveT < 0;
+    const zooming = Math.abs(engine.target.zoom - engine.camera.zoom) > 0.0001;
+    if (!isIdle || zooming) {
+      pendingGapRef.current = newGap;
+      return;
+    }
+
+    // Defer the expensive spatial recomputation until the slider settles.
+    gapDebounceRef.current = window.setTimeout(() => {
+      gapDebounceRef.current = null;
+      const eng = engineRef.current;
+      if (!eng || !readyRef.current) return;
+      const idleNow = !eng.fluid && eng.solveT < 0;
+      const zoomingNow = Math.abs(eng.target.zoom - eng.camera.zoom) > 0.0001;
+      console.warn(`[gap-debounce-feed] timeout gap ${newGap} idleNow ${idleNow} zoomingNow ${zoomingNow} eng.gap ${eng.tune.gap}`);
+      if (!idleNow || zoomingNow) {
+        pendingGapRef.current = newGap;
+        return;
+      }
+      if (newGap === eng.tune.gap) {
+        console.warn(`[gap-debounce-feed] skip same`);
+        return;
+      }
+      pendingGapRef.current = null;
+      eng.tune.gap = newGap;
+      console.warn(`[gap-debounce-feed] set eng.gap to ${newGap}`);
+      eng.solveW0 = eng.worldW;
+      eng.solveH0 = eng.worldH;
+      captureLayout(eng);
+      kairosPerf.time("spatial", "grid:solve", () => {
+        computeFit(eng);
+        computeGrid(eng, eng.target.zoom);
+      });
+      eng.solveW1 = eng.worldW;
+      eng.solveH1 = eng.worldH;
+      captureTarget(eng);
+      eng.solveT = 0;
+      eng.solveSeed = 0;
+      eng.lastGridZ = eng.target.zoom;
+      ensureLoop();
+    }, 220);
+
+    return () => {
+      if (gapDebounceRef.current !== null) {
+        clearTimeout(gapDebounceRef.current);
+        gapDebounceRef.current = null;
+      }
+    };
+  }, [gridLayout.gap, ensureLoop]);
+
   // Sync data + view when the feed changes (filter/search/sort → displayBookmarks).
   useEffect(() => {
     if (!readyRef.current) return;
@@ -535,6 +696,7 @@ export function useSpatialFeed(
     refs: { viewportRef, worldRef },
     actions: {
       zoomBy: (steps: number) => {
+        if (zoomInputLockedRef.current) return;
         const engine = engineRef.current;
         if (!engine) return;
         const ptr = lastPointerRef.current;

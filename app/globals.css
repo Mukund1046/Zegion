@@ -10,6 +10,7 @@
 
 :root {
   color-scheme: light;
+  --card-radius: 12px;
   --tracking-normal: -0.01em;
   --tracking-medium: -0.015em;
   --tracking-semibold: -0.02em;
@@ -251,6 +252,18 @@ select {
   font: inherit;
 }
 
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+a[href],
+summary {
+  cursor: pointer;
+}
+
+button:disabled,
+[aria-disabled="true"] {
+  cursor: default;
+}
+
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
@@ -294,8 +307,6 @@ select:focus-visible,
 .grid-item,
 .grid-item-body,
 .grid-item-text,
-.grid-item-timeline,
-.grid-item-stats,
 .viewport {
   transition: background 0.24s ease, color 0.24s ease, border-color 0.24s ease, transform 0.24s ease;
 }
@@ -359,6 +370,7 @@ select:focus-visible,
   gap: 10px;
   min-width: 0;
   flex-shrink: 0;
+  cursor: pointer;
 }
 
 .brand-mark {
@@ -517,6 +529,7 @@ body.dark-mode .action-pill {
 .sidebar-backdrop.open {
   display: block;
   opacity: 1;
+  cursor: pointer;
 }
 
 .sidebar {
@@ -944,11 +957,19 @@ body.dark-mode .proximity-dash.is-active {
   -webkit-backface-visibility: hidden;
   backface-visibility: hidden;
   contain: content;
-  border-radius: 12px;
+  border-radius: var(--card-radius, 12px);
   background: var(--card);
-  box-shadow: var(--shadow);
-  border: 1px solid var(--border);
+  border: 0;
   transform-origin: 0 0;
+  cursor: pointer;
+}
+
+body.dark-mode .grid-item {
+  background: var(--card);
+}
+
+.grid-item.lightbox-active {
+  cursor: default;
 }
 
 /* The spatial renderer writes card transforms every frame during a fluid zoom
@@ -958,20 +979,16 @@ body.dark-mode .proximity-dash.is-active {
    an intermediate scale instead of the exact contract. Spatial cards therefore
    animate transform changes imperceptibly instead of transitioning them.
 
-   FLUID-ZOOM INVARIANT: border-radius/box-shadow/border are intentionally
+   FLUID-ZOOM INVARIANT: border-radius is intentionally
    static. The compositor `scale(z)` already magnifies them (a magnified rounded
    surface has proportionally larger corners — this is the correct rendering).
    Counter-scaling them via an inherited custom property (e.g. `--spatial-zoom`
    + `border-radius: calc(12px / var(--spatial-zoom))`) was measured and
    REJECTED: it forces style recalc + repaint of all ~1,100 cards every zoom
    frame (3.9x UpdateLayoutTree, 2.4x Paint, ~55% fewer engine frames). Do not
-   reintroduce a var()-driven radius/shadow/border here. */
+   reintroduce a var()-driven radius here. */
 .spatial-world .grid-item {
   transition: background 0.24s ease, color 0.24s ease, border-color 0.24s ease;
-}
-
-body.dark-mode .grid-item {
-  background: var(--card);
 }
 
 .grid-item-media {
@@ -986,14 +1003,8 @@ body.dark-mode .grid-item {
   object-fit: cover;
   display: block;
   pointer-events: none;
-  border-radius: 12px;
-  outline: 1px solid oklch(0 0 0 / 0.08);
-  outline-offset: -1px;
+  border-radius: var(--card-radius, 12px);
   transition: transform 0.24s ease, filter 0.24s ease;
-}
-
-body.dark-mode .grid-item img:not(.play-pill-icon) {
-  outline-color: oklch(1 0 0 / 0.1);
 }
 
 .grid-item:hover:not(.lightbox-active) img {
@@ -1001,86 +1012,87 @@ body.dark-mode .grid-item img:not(.play-pill-icon) {
   filter: saturate(1.02);
 }
 
-.grid-item-body {
+.grid-item-head {
+  display: none;
+}
+
+.grid-item-text {
   display: none;
 }
 
 .grid-item-card {
   display: flex;
   flex-direction: column;
-  background: var(--popover);
+  background: var(--card);
 }
 
-.grid-item-card .grid-item-media {
+.grid-item-card .grid-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px 0;
   flex-shrink: 0;
 }
 
-.grid-item-card img {
-  border-radius: 0;
-}
-
-.grid-item-card .grid-item-body {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px 14px 16px;
-}
-
-.grid-item-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.grid-item-author {
+.grid-item-card .grid-item-author {
   color: var(--foreground);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.grid-item-handle {
+.grid-item-card .grid-item-handle {
   color: var(--muted-foreground);
-  font-size: 11px;
+  font-size: 12px;
+  font-weight: 500;
   text-decoration: none;
+  flex-shrink: 0;
 }
 
-.grid-item-handle:hover {
+.grid-item-card .grid-item-handle:hover {
   color: var(--foreground);
 }
 
-.grid-item-text {
+.grid-item-card .grid-item-media {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.grid-item-card .grid-item-media img {
+  border-radius: 0;
+  border: none;
+  outline: none;
+}
+
+.grid-item-card .grid-item-text {
+  display: block;
   color: var(--foreground);
   font-size: 13px;
-  line-height: 1.46;
+  line-height: 1.45;
   text-wrap: pretty;
   display: -webkit-box;
-  -webkit-line-clamp: 6;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  margin: 0;
+  padding: 8px 12px 10px;
+  flex-shrink: 0;
 }
 
-body.dark-mode .grid-item-text {
-  color: var(--foreground);
+.grid-item-card-text-only .grid-item-media {
+  display: none;
 }
 
-.grid-item-timeline,
-.grid-item-stats {
-  color: var(--muted-foreground);
-  font-size: 11px;
-  line-height: 1.45;
-}
-
-.grid-item-stats {
-  margin-top: auto;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.grid-item-card-text-only .grid-item-body {
-  justify-content: center;
+.grid-item-card-text-only .grid-item-text {
+  -webkit-line-clamp: 4;
+  padding: 0 12px 12px;
 }
 
 @keyframes skeleton-shimmer {
@@ -1109,9 +1121,7 @@ body.dark-mode .grid-item-text {
 }
 
 .grid-item.loading.grid-item-card .grid-item-head,
-.grid-item.loading.grid-item-card .grid-item-text,
-.grid-item.loading.grid-item-card .grid-item-timeline,
-.grid-item.loading.grid-item-card .grid-item-stats {
+.grid-item.loading.grid-item-card .grid-item-text {
   color: transparent !important;
   background: var(--muted);
   border-radius: 4px;
@@ -1132,19 +1142,6 @@ body.dark-mode .grid-item-text {
 
 .grid-item.loading.grid-item-card .grid-item-text {
   min-height: 4.5em;
-}
-
-.grid-item.loading.grid-item-card .grid-item-timeline {
-  width: 45%;
-  height: 1.1em;
-}
-
-.grid-item.loading.grid-item-card .grid-item-stats span {
-  display: inline-block;
-  width: 50px;
-  height: 1em;
-  background: var(--muted);
-  border-radius: 4px;
 }
 
 .grid-item-media.loading-image {
@@ -1183,6 +1180,12 @@ body.dark-mode .grid-item-text {
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
+  cursor: pointer;
+}
+
+.lightbox-overlay.active .lightbox-info,
+.lightbox-overlay.active .grid-item.lightbox-active {
+  cursor: default;
 }
 
 .lightbox-close {
@@ -1530,8 +1533,19 @@ body.dark-mode .grid-item-text {
 }
 
 .search-cmd-input::placeholder {
-  font-family: var(--font-host-grotesk), system-ui, sans-serif;
+  font-family: var(--font-offgrid-sans), system-ui, sans-serif;
   opacity: 0.5;
+}
+
+/* Base UI's dialog popup receives focus. Firefox can retain its native focus
+   outline beside the command's deliberate inline stroke; normalize only this
+   popup so Chrome's existing single-edge treatment is preserved. */
+.search-command-dialog,
+.search-command-dialog:focus,
+.search-command-dialog:focus-visible {
+  appearance: none;
+  border: 0;
+  outline: none;
 }
 
 .skip-link {
@@ -1554,6 +1568,10 @@ body.dark-mode .grid-item-text {
   --ctx-hover-bg: var(--ctx-hover-bg-fallback, var(--accent));
   --ctx-hover-text: var(--ctx-hover-text-fallback, var(--foreground));
   box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.03), 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+[data-slot="context-menu-item"] {
+  cursor: pointer;
 }
 body.dark-mode [data-slot="context-menu-popup"] {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.06);

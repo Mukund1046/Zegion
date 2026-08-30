@@ -13,15 +13,18 @@ import { useSpatialFeed } from "@/hooks/useSpatialFeed";
 export default function SpatialFeed({
   bookmarks,
   activeView,
+  isFilterActive,
   onOpenLightbox,
   onOpenContextMenu,
 }: {
   bookmarks: Bookmark[];
   activeView: ViewMode;
+  /** True only while the app shell is showing a search or filtered subset. */
+  isFilterActive: boolean;
   onOpenLightbox: (element: HTMLDivElement, bookmark: Bookmark) => void;
   onOpenContextMenu: (bookmark: Bookmark, x: number, y: number) => void;
 }) {
-  const { refs } = useSpatialFeed(bookmarks, activeView, {
+  const { refs } = useSpatialFeed(bookmarks, activeView, isFilterActive, {
     onOpenLightbox,
     onOpenContextMenu,
   });
