@@ -1,6 +1,20 @@
 import { NextResponse } from "next/server";
 
-const SAFE_PREFIXES = ["Please wait ", "is already running"];
+// Prefix allowlist for error messages returned to the client. These messages
+// are constructed by our own code without secret values (names and paths
+// only, never cookie contents), so they are safe to surface. Anything else
+// is collapsed to a generic message to avoid leaking session material from
+// child-process stderr.
+const SAFE_PREFIXES = [
+  "Please wait ",
+  "is already running",
+  "Sync failed: ",
+  "Manual mode requires ",
+  "Missing ",
+  "Invalid request",
+  "Bookmarks JSONL not found",
+  "Script timed out",
+];
 
 export function sanitizeError(error: unknown): string {
   const message = error instanceof Error ? error.message : "Unexpected server error";

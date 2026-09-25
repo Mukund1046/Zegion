@@ -396,7 +396,7 @@ export function useBookmarkViewer() {
           author.textContent = bookmark.authorName || `@${bookmark.authorHandle}`;
           handle.textContent = `@${bookmark.authorHandle}`;
           handle.href = bookmark.url;
-          text.textContent = lineClampText(bookmark.text || "", hasImage ? 150 : 220);
+          text.textContent = lineClampText(cleanPostText(bookmark.text || ""), hasImage ? 150 : 220);
           timeline.textContent = getTimelineText(bookmark);
           timeline.style.display = timeline.textContent ? "" : "none";
           stats.innerHTML = `
@@ -410,7 +410,7 @@ export function useBookmarkViewer() {
       element.classList.remove("loading");
 
       const summaryText = lineClampText(
-        bookmark.text || bookmark.authorName || bookmark.authorHandle || "Bookmark",
+        cleanPostText(bookmark.text || bookmark.authorName || bookmark.authorHandle || "Bookmark"),
         120
       );
       element.tabIndex = 0;

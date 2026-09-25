@@ -19,6 +19,7 @@ import {
   PopoverContent,
 } from '@/components/animate-ui/components/radix/popover'
 import { useDialKit } from "dialkit";
+import { cleanPostText } from "@/lib/bookmark-utils";
 import { Badge } from "@/components/reui/badge";
 import SyncSettingsDialog from "@/components/ui/sync-settings-dialog";
 
@@ -26,7 +27,6 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import {
   Search01Icon,
   Cancel01Icon,
-  CommandIcon,
   EllipsisIcon,
   Link01Icon,
   Copy01Icon,
@@ -75,11 +75,6 @@ function ToolbarRegion({
     statsBorderRadius: [8, 0, 20, 1],
     statsPaddingX: [2, 0, 16, 1],
     statsPaddingY: [2, 0, 12, 1],
-    kbdPaddingX: [6, 0, 20, 1],
-    kbdPaddingY: [4, 0, 12, 1],
-    kbdBorderRadius: [6, 0, 20, 1],
-    kbdBg: { type: "color", default: "var(--muted)" },
-    kbdBgDark: { type: "color", default: "#262626" },
   });
 
   const [syncSettingsOpen, setSyncSettingsOpen] = useState(false);
@@ -134,7 +129,7 @@ function ToolbarRegion({
               strokeWidth={btnParams.borderWidth as number}
             >
               <motion.button
-                className="action-pill"
+                className="action-pill search-pill"
                 type="button"
                 whileHover={{ scale: 1.03, y: -1 }}
                 whileTap={{ scale: 0.96 }}
@@ -197,22 +192,7 @@ function ToolbarRegion({
                       {state.displayBookmarks.length}
                     </span>
                   </>
-                ) : (
-                  <kbd
-                    className="inline-flex items-center gap-1 text-[10px] font-medium leading-none text-muted-foreground/60"
-                    style={{
-                      paddingLeft: btnParams.kbdPaddingX as number,
-                      paddingRight: btnParams.kbdPaddingX as number,
-                      paddingTop: btnParams.kbdPaddingY as number,
-                      paddingBottom: btnParams.kbdPaddingY as number,
-                      borderRadius: btnParams.kbdBorderRadius as number,
-                      background: state.darkMode ? (btnParams.kbdBgDark as string) : (btnParams.kbdBg as string),
-                    }}
-                  >
-                    <HugeiconsIcon icon={CommandIcon} size={12} />
-                    K
-                  </kbd>
-                )}
+                ) : null}
               </motion.button>
             </SquircleClip>
           </div>
@@ -236,7 +216,7 @@ function ToolbarRegion({
             <Popover>
               <PopoverTrigger asChild>
                 <motion.button
-                  className="action-pill"
+                  className="action-pill more-pill"
                   type="button"
                   whileHover={{ scale: 1.03, y: -1 }}
                   whileTap={{ scale: 0.96 }}
@@ -846,7 +826,7 @@ function SearchCommand({
   const ppX = cmdParams.pillPaddingX as number;
   const ppY = cmdParams.pillPaddingY as number;
   const mfs = cmdParams.monoFontSize as number;
-  const monoStyle = { fontSize: mfs, textTransform: "uppercase" as const, fontFamily: "var(--font-dm-mono), DM Mono, monospace" };
+  const monoStyle = { fontSize: mfs, letterSpacing: 0, textTransform: "uppercase" as const, fontFamily: "var(--font-dm-mono), DM Mono, monospace" };
 
   function highlightText(text: string, q: string) {
     if (!q.trim()) return text;
@@ -946,7 +926,7 @@ function SearchCommand({
                      {author.name.charAt(0).toUpperCase()}
                    </div>
                    <div className="flex min-w-0 flex-1 flex-col">
-                     <span className="truncate text-sm font-medium text-foreground">{author.name}</span>
+                     <span className="truncate text-sm font-medium tracking-[-0.06px] text-foreground">{author.name}</span>
                      <span className="truncate text-xs text-muted-foreground" style={monoStyle}>@{author.handle}</span>
                    </div>
                   <span
@@ -984,7 +964,7 @@ function SearchCommand({
                      #
                    </div>
                   <div className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate text-sm font-medium text-foreground">
+                    <span className="truncate text-sm font-medium tracking-[-0.06px] text-foreground">
                       {cat.name.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).replace(/\bAi\b/g, 'AI')}
                     </span>
                   </div>
@@ -1133,7 +1113,7 @@ function SearchCommand({
                       >
                         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                           <div className="flex items-center gap-2">
-                            <span className="truncate text-sm font-medium text-foreground">{bookmark.authorName}</span>
+                            <span className="truncate text-sm font-medium tracking-[-0.06px] text-foreground">{bookmark.authorName}</span>
                             <span className="shrink-0 text-xs text-muted-foreground" style={monoStyle}>@{bookmark.authorHandle}</span>
                           </div>
                           {(bookmark.linkedDomains?.[0] || bookmark.domain) && (
@@ -1142,7 +1122,7 @@ function SearchCommand({
                             </span>
                           )}
                           <p className="line-clamp-2 text-sm text-muted-foreground">
-                            {highlightText(bookmark.text, query)}
+                            {highlightText(cleanPostText(bookmark.text), query)}
                           </p>
                         </div>
                         <div className="flex shrink-0 items-center">

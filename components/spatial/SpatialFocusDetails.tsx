@@ -6,7 +6,7 @@ import { ExpandableTabs } from "@/components/motion/expandable-tabs";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { TextIcon, UserIcon } from "@hugeicons/core-free-icons";
 import type { BookmarkForRender } from "@/lib/spatial/dom-renderer";
-import { cleanPostText, getTimelineEntries } from "@/lib/bookmark-utils";
+import { cleanPostText, getTimelineEntries, sentenceCase } from "@/lib/bookmark-utils";
 import { useDialKit } from "dialkit";
 
 interface SpatialFocusDetailsProps {
@@ -47,7 +47,7 @@ export function SpatialFocusDetails({ bookmark, phase, isActive, isAnimating }: 
   const full = bookmark?.bookmark;
   const authorName = full?.authorName || cleanPostText(bookmark?.text || "").slice(0, 20) || "Unknown";
   const handle = full?.authorHandle ? `@${full.authorHandle}` : full?.authorName ? `@${full.authorName.replace(/\s+/g, "").toLowerCase()}` : "@unknown";
-  const text = cleanPostText(bookmark?.text || full?.text || "");
+  const text = sentenceCase(cleanPostText(bookmark?.text || full?.text || ""));
   const timeline = full ? getTimelineEntries(full) : [];
 
   const items = useMemo(
@@ -58,7 +58,7 @@ export function SpatialFocusDetails({ bookmark, phase, isActive, isAnimating }: 
         icon: <HugeiconsIcon icon={TextIcon} size={16} />,
         content: (
           <div
-            className="max-h-[42vh] overflow-y-auto"
+            className="search-scrollbar max-h-[42vh] overflow-y-auto"
             style={{
               width: `${focusDetailsParams.postWidth as number}px`,
               padding: `${focusDetailsParams.cardPaddingY as number}px ${focusDetailsParams.cardPaddingX as number}px`,
@@ -173,7 +173,7 @@ export function SpatialFocusDetails({ bookmark, phase, isActive, isAnimating }: 
         labelGap={focusDetailsParams.labelGap as number}
         panelGap={focusDetailsParams.panelGap as number}
         classNames={{
-          root: "overlay-pop border-0 bg-popover",
+          root: "overlay-pop border-0 bg-popover focus-details-card",
           bar: "bg-transparent",
           tab: "text-muted-foreground hover:text-foreground border-0",
           activeTab: "text-foreground border-0",

@@ -6,7 +6,8 @@
     "dev": "next dev --port 3001",
     "build": "next build",
     "start": "next start",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "node --test lib/__tests__/sync-regression.test.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

@@ -126,7 +126,7 @@ function sameWidths(a: Record<string, number>, b: Record<string, number>) {
   return aKeys.every((key) => a[key] === b[key]);
 }
 
-function useContentSize() {
+function useContentSize(activeKey?: string | null) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState<Size | null>(null);
 
@@ -139,7 +139,7 @@ function useContentSize() {
 
   useLayoutEffect(() => {
     measure();
-  }, [measure]);
+  }, [measure, activeKey]);
 
   useEffect(() => {
     const el = ref.current;
@@ -225,14 +225,13 @@ export function ExpandableTabs({
 }) {
   const reduce = useReducedMotion();
   const rootRef = useRef<HTMLDivElement>(null);
-  const [sizerRef, size] = useContentSize();
-  const { setLabelMeasureRef, widths: labelWidths } = useLabelWidths(items);
-
   const controlled = value !== undefined;
   const [internal, setInternal] = useState<string | null>(defaultValue);
   const activeId = controlled ? value : internal;
   const active = items.find((item) => item.id === activeId) ?? null;
   const visualActiveId = active?.id ?? null;
+  const [sizerRef, size] = useContentSize(visualActiveId);
+  const { setLabelMeasureRef, widths: labelWidths } = useLabelWidths(items);
 
   const setActive = useCallback(
     (next: string | null) => {
@@ -318,11 +317,11 @@ export function ExpandableTabs({
           )}
           style={{ paddingBottom: BAR_H + panelGap }}
         >
-          {items.map((item) => (
-            <div key={item.id} className="col-start-1 row-start-1 w-max">
-              {item.content}
+          {active ? (
+            <div key={active.id} className="col-start-1 row-start-1 w-max">
+              {active.content}
             </div>
-          ))}
+          ) : null}
         </div>
 
         <div

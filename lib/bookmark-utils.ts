@@ -82,6 +82,18 @@ export const cleanPostText = (value = "") => {
   return withoutTco.replace(/\s+https?:\/\/\S*$/i, "").trim();
 };
 
+/**
+ * Sentence-case a display string: capitalize the first letter and the first
+ * letter after sentence-ending punctuation (`.`, `!`, `?`) or a line break.
+ * Only ASCII/Unicode lowercase letters are touched, so `@handles`,
+ * `domain.tld` fragments (no space after the dot) and already-cased text
+ * pass through unchanged. Display-only — never applied to stored data.
+ */
+export const sentenceCase = (value = "") =>
+  value
+    .replace(/^\s*\p{Ll}/u, (m) => m.toUpperCase())
+    .replace(/([.!?]\s+|\n\s*)(\p{Ll})/gu, (_, boundary, letter) => `${boundary}${letter.toUpperCase()}`);
+
 export const formatCount = (value = 0) => {
   if (value >= 1000000) return `${(value / 1000000).toFixed(1).replace(/\.0$/, "")}M`;
   if (value >= 1000) return `${(value / 1000).toFixed(1).replace(/\.0$/, "")}K`;
@@ -140,7 +152,7 @@ export const estimateCardHeight = (bookmark: Bookmark, itemWidth: number) => {
         240
       )
     : 0;
-  const text = lineClampText(bookmark.text || "", hasImage ? 150 : 220);
+  const text = lineClampText(cleanPostText(bookmark.text || ""), hasImage ? 150 : 220);
   const charsPerLine = Math.max(24, Math.floor(itemWidth / 8.8));
   const textLines = clamp(Math.ceil(text.length / charsPerLine), 1, 6);
   const textHeight = textLines * 19;

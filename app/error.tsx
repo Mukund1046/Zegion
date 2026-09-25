@@ -10,7 +10,7 @@ export default function ErrorPage({
   return (
     <div role="alert" className="flex min-h-screen flex-col items-center justify-center gap-4 p-8 text-center">
       <div className="text-4xl">⚠</div>
-      <h2 className="text-xl font-semibold text-foreground">Something went wrong</h2>
+      <h2 className="text-xl font-semibold tracking-[-0.1px] text-foreground">Something went wrong</h2>
       <p className="max-w-md text-sm text-muted-foreground">
         {error.message || "An unexpected error occurred"}
       </p>

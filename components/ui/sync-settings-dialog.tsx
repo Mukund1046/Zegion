@@ -18,6 +18,7 @@ import {
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { ThinkingOrb } from "thinking-orbs";
 import { XIcon } from "lucide-react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -28,10 +29,10 @@ import {
 } from "@hugeicons/core-free-icons";
 
 const BROWSER_OPTIONS = [
-  { id: "firefox", label: "Firefox", note: "Stores cookies in plaintext. Works on Windows." },
-  { id: "edge", label: "Edge", note: "Uses DPAPI encryption. Fully readable." },
-  { id: "chrome", label: "Chrome", note: "Chrome 127+ uses App-Bound Encryption. Manual mode recommended." },
-  { id: "brave", label: "Brave", note: "Uses Chrome encryption. Manual mode recommended." },
+  { id: "firefox", label: "Firefox", auto: "yes", note: "Stores cookies in plaintext. Works on Windows." },
+  { id: "edge", label: "Edge", auto: "no", note: "Edge 127+ uses App-Bound Encryption, and its cookie file is locked while Edge runs. Manual mode recommended." },
+  { id: "chrome", label: "Chrome", auto: "no", note: "Chrome 127+ uses App-Bound Encryption. Manual mode recommended." },
+  { id: "brave", label: "Brave", auto: "no", note: "Uses Chrome encryption. Manual mode recommended." },
 ] as const;
 
 const COOKIE_MODE_LABELS: Record<string, string> = {
@@ -80,8 +81,16 @@ export default function SyncSettingsDialog({
   const loadedSourceRef = useRef(false);
   const autoTriggerRef = useRef<HTMLButtonElement>(null);
   const ddMenuRef = useRef<HTMLDivElement>(null);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Saved-on-disk method (captured once per open) vs. the working draft.
+  const [savedSource, setSavedSource] = useState<"auto" | "manual" | null>(null);
+  const [savedBrowser, setSavedBrowser] = useState("firefox");
+  // Mode the user asked to switch to but hasn't confirmed yet.
+  const [pendingSource, setPendingSource] = useState<"auto" | "manual" | null>(null);
+  // Live os_crypt wrapper class for the selected chromium browser.
+  const [keyPrefix, setKeyPrefix] = useState<string | null>(null);
 
-  const openDropdown = () => {
+  const openDropdown = useCallback(() => {
     const trigger = autoTriggerRef.current;
     if (!trigger) return;
     const rect = trigger.getBoundingClientRect();
@@ -93,12 +102,12 @@ export default function SyncSettingsDialog({
       spaceBelow: window.innerHeight - rect.bottom - 8,
     });
     setDropdownOpen(true);
-  };
+  }, []);
 
-  const closeDropdown = () => {
+  const closeDropdown = useCallback(() => {
     setDropdownOpen(false);
     setDdPos(null);
-  };
+  }, []);
 
   useLayoutEffect(() => {
     if (!dropdownOpen || !ddPos || !ddMenuRef.current) return;
@@ -116,9 +125,14 @@ export default function SyncSettingsDialog({
       setCookieMode(data.cookieMode);
       if (!loadedSourceRef.current) {
         loadedSourceRef.current = true;
+        const saved = data.config?.source || null;
+        setSavedSource(saved);
+        setSavedBrowser(data.config?.browser || "firefox");
+        setPendingSource(null);
+        setKeyPrefix(null);
         setConfig((prev) => ({
           ...prev,
-          source: data.config?.source || null,
+          source: saved,
           browser: data.config?.browser || "firefox",
         }));
       }
@@ -131,14 +145,28 @@ export default function SyncSettingsDialog({
     if (open) {
       setShowSaved(false);
       setError(null);
+      loadedSourceRef.current = false;
       loadConfig();
     } else {
       closeDropdown();
     }
   }, [open, loadConfig, closeDropdown]);
 
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    };
+  }, []);
+
   const handleSave = async () => {
     if (!config.source) return;
+    if (
+      config.source === "manual" &&
+      (!config.ct0.trim() || !config.authToken.trim())
+    ) {
+      setError("Manual mode requires both ct0 and auth_token.");
+      return;
+    }
     setSaving(true);
     setError(null);
     setShowSaved(false);
@@ -160,17 +188,49 @@ export default function SyncSettingsDialog({
       const data = await res.json();
       if (!res.ok) {
         setError(data.error || "Failed to save");
+        setSaving(false);
         return;
       }
       setCookieMode(data.cookieMode);
       setShowSaved(true);
       onSaved?.();
-      setTimeout(() => onOpenChange(false), 800);
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = setTimeout(() => {
+        onOpenChange(false);
+        setSaving(false);
+      }, 800);
     } catch {
       setError("Network error");
-    } finally {
       setSaving(false);
     }
+  };
+
+  const focusCt0 = () => {
+    requestAnimationFrame(() => {
+      document.getElementById("sync-ct0")?.focus();
+    });
+  };
+
+  // Switching away from the saved-on-disk method discards its saved data on
+  // the next save — confirm first. Unsaved drafts flip immediately, and
+  // switching back to the saved method needs no confirm.
+  const requestSourceSwitch = (target: "auto" | "manual") => {
+    if (target === config.source) return;
+    if (savedSource && savedSource !== target) {
+      setPendingSource(target);
+      return;
+    }
+    setPendingSource(null);
+    setConfig((c) => ({ ...c, source: target }));
+    if (target === "manual") focusCt0();
+  };
+
+  const confirmSourceSwitch = () => {
+    if (!pendingSource) return;
+    const target = pendingSource;
+    setConfig((c) => ({ ...c, source: target }));
+    setPendingSource(null);
+    if (target === "manual") focusCt0();
   };
 
   const sc = p.ChoiceCard;
@@ -254,6 +314,32 @@ export default function SyncSettingsDialog({
 
   const isAuto = config.source === "auto";
   const isManual = config.source === "manual";
+  const canSave =
+    Boolean(config.source) &&
+    (!isManual || Boolean(config.ct0.trim() && config.authToken.trim()));
+  const selectedBrowser = BROWSER_OPTIONS.find((b) => b.id === config.browser);
+
+  // Resolve Auto capability live for chromium-family browsers (Edge is
+  // version-dependent: DPAPI-era profiles work, APPB ones don't).
+  useEffect(() => {
+    if (!open || !isAuto || !selectedBrowser || selectedBrowser.auto === "yes") {
+      setKeyPrefix(null);
+      return;
+    }
+    let cancelled = false;
+    setKeyPrefix(null);
+    apiFetch(`/api/browser-key?browser=${selectedBrowser.id}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled) setKeyPrefix(data?.prefix ?? "missing");
+      })
+      .catch(() => {
+        if (!cancelled) setKeyPrefix("missing");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, isAuto, selectedBrowser]);
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange} position="right">
@@ -311,7 +397,9 @@ export default function SyncSettingsDialog({
             >
               <button
                 type="button"
-                onClick={() => setConfig((c) => ({ ...c, source: c.source === "auto" ? null : "auto" }))}
+                role="radio"
+                aria-checked={isAuto}
+                onClick={() => requestSourceSwitch("auto")}
                 onMouseEnter={(e) => { e.currentTarget.style.background = `light-dark(${sc.hoverBg}, ${sc.hoverBgDark})` }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = "transparent" }}
                 style={{
@@ -320,7 +408,7 @@ export default function SyncSettingsDialog({
                   gap: sc.gap,
                   padding: `${sc.paddingY}px ${sc.paddingX}px`,
                   borderRadius: sc.borderRadius,
-                  background: "transparent",
+                  background: isAuto ? `light-dark(${sc.hoverBg}, ${sc.hoverBgDark})` : "transparent",
                   cursor: "pointer",
                   textAlign: "left",
                   width: "100%",
@@ -347,6 +435,11 @@ export default function SyncSettingsDialog({
                 >
                   <HugeiconsIcon icon={ChevronDownIcon} size={sc.chevronSize} />
                 </span>
+                {isAuto && (
+                  <span style={{ fontSize: sc.subtitleSize, fontWeight: 600, color: "var(--foreground)", flexShrink: 0 }}>
+                    Selected
+                  </span>
+                )}
               </button>
 
               <div
@@ -471,6 +564,9 @@ export default function SyncSettingsDialog({
                                       )}
                                     </span>
                                     <span>{b.label}</span>
+                                    <span style={{ marginLeft: "auto", paddingLeft: 8, fontSize: dd.itemFontSize, color: "var(--muted-foreground)", flexShrink: 0 }}>
+                                      {b.auto === "yes" ? "Auto ✓" : b.auto === "no" ? "Manual required" : "Auto if DPAPI-era"}
+                                    </span>
                                   </button>
                                 );
                               })}
@@ -481,8 +577,55 @@ export default function SyncSettingsDialog({
                       </div>
                     </div>
                     <p style={{ fontSize: fc.noteSize, color: "var(--muted-foreground)", lineHeight: 1.4, margin: 0 }}>
-                      {BROWSER_OPTIONS.find((b) => b.id === config.browser)?.note}
+                      {selectedBrowser?.note}
+                      {selectedBrowser && selectedBrowser.auto !== "yes" && keyPrefix && (
+                        <>
+                          {" "}Detected on this machine:{" "}
+                          {keyPrefix === "dpapi"
+                            ? "DPAPI — Auto will work."
+                            : keyPrefix === "app-bound"
+                              ? "App-Bound — use Manual mode."
+                              : "no readable profile."}
+                        </>
+                      )}
                     </p>
+                    {selectedBrowser?.auto === "no" && (
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          flexWrap: "wrap",
+                          padding: `${sb.paddingY}px ${sb.paddingX}px`,
+                          borderRadius: sb.borderRadius,
+                          fontSize: sb.fontSize,
+                          background: sb.warnBg as string,
+                          color: sb.warnColor as string,
+                        }}
+                      >
+                        <span style={{ flex: 1, minWidth: 140, lineHeight: 1.4 }}>
+                          {selectedBrowser.id === "edge"
+                            ? "Edge locks its cookie file while running, and 127+ uses App-Bound Encryption — Auto rarely works."
+                            : `${selectedBrowser.label} 127+ uses App-Bound Encryption — Auto cannot read it.`}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => requestSourceSwitch("manual")}
+                          style={{
+                            padding: "4px 10px",
+                            borderRadius: sb.borderRadius,
+                            fontSize: sb.fontSize,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                            color: sb.warnColor as string,
+                            background: "transparent",
+                            border: `1px solid ${sb.warnColor as string}`,
+                          }}
+                        >
+                          Use Manual instead
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -498,7 +641,9 @@ export default function SyncSettingsDialog({
             >
               <button
                 type="button"
-                onClick={() => setConfig((c) => ({ ...c, source: c.source === "manual" ? null : "manual" }))}
+                role="radio"
+                aria-checked={isManual}
+                onClick={() => requestSourceSwitch("manual")}
                 onMouseEnter={(e) => { e.currentTarget.style.background = `light-dark(${sc.hoverBg}, ${sc.hoverBgDark})` }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = "transparent" }}
                 style={{
@@ -507,7 +652,7 @@ export default function SyncSettingsDialog({
                   gap: sc.gap,
                   padding: `${sc.paddingY}px ${sc.paddingX}px`,
                   borderRadius: sc.borderRadius,
-                  background: "transparent",
+                  background: isManual ? `light-dark(${sc.hoverBg}, ${sc.hoverBgDark})` : "transparent",
                   cursor: "pointer",
                   textAlign: "left",
                   width: "100%",
@@ -534,6 +679,11 @@ export default function SyncSettingsDialog({
                 >
                   <HugeiconsIcon icon={ChevronDownIcon} size={sc.chevronSize} />
                 </span>
+                {isManual && (
+                  <span style={{ fontSize: sc.subtitleSize, fontWeight: 600, color: "var(--foreground)", flexShrink: 0 }}>
+                    Selected
+                  </span>
+                )}
               </button>
 
               <div
@@ -567,6 +717,7 @@ export default function SyncSettingsDialog({
                           ct0
                         </FieldLabel>
                         <Input
+                          id="sync-ct0"
                           type="password"
                           placeholder="Paste ct0 cookie value"
                           value={config.ct0}
@@ -630,10 +781,54 @@ export default function SyncSettingsDialog({
               </div>
             </div>
 
+            {pendingSource && (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                  padding: `${fc.paddingY}px ${fc.paddingX}px`,
+                  borderRadius: fc.borderRadius,
+                  background: `light-dark(${fc.bg}, ${fc.bgDark})`,
+                }}
+              >
+                <p style={{ fontSize: sc.subtitleSize, color: "var(--foreground)", lineHeight: 1.4, margin: 0 }}>
+                  Switching to {pendingSource === "auto" ? "Auto-detect" : "Manual entry"} will discard the saved{" "}
+                  {savedSource === "auto" ? `auto pairing (${savedBrowser})` : "manual tokens"} when you save.
+                </p>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <Button
+                    onClick={confirmSourceSwitch}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: fc.inputBorderRadius,
+                      fontSize: sc.subtitleSize,
+                    }}
+                  >
+                    Switch anyway
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => setPendingSource(null)}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: fc.inputBorderRadius,
+                      fontSize: sc.subtitleSize,
+                    }}
+                  >
+                    Keep editing
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {/* Status */}
             <div style={{ minHeight: 28, display: "flex", alignItems: "center" }}>
               {statusBadge()}
             </div>
+            <p style={{ fontSize: fc.noteSize, color: "var(--muted-foreground)", lineHeight: 1.4, margin: 0 }}>
+              Save Settings applies the selected connection method. Saving persists only the active method and discards the other method’s saved data after confirmation.
+            </p>
           </div>
         </DrawerPanel>
 
@@ -649,9 +844,11 @@ export default function SyncSettingsDialog({
           }}
         >
           <DrawerClose
+            disabled={saving}
             render={
               <Button
                 variant="ghost"
+                disabled={saving}
                 style={{
                   padding: `${p.Footer.buttonPaddingY}px ${p.Footer.buttonPaddingX}px`,
                   borderRadius: p.Footer.buttonBorderRadius,
@@ -663,13 +860,21 @@ export default function SyncSettingsDialog({
           </DrawerClose>
           <Button
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || !canSave}
+            aria-busy={saving}
             style={{
               padding: `${p.Footer.buttonPaddingY}px ${p.Footer.buttonPaddingX}px`,
               borderRadius: p.Footer.buttonBorderRadius,
             }}
           >
-            {saving ? "Saving\u2026" : "Save Settings"}
+            {saving ? (
+              <span className="inline-flex items-center gap-2">
+                <ThinkingOrb state="working" size={20} aria-label="Saving" />
+                <span>Saving…</span>
+              </span>
+            ) : (
+              "Save Settings"
+            )}
           </Button>
         </DrawerFooter>
       </DrawerPopup>

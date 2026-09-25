@@ -31,6 +31,7 @@ spatialv2.hooks.useSpatialViewer.ts.bak
 Reference/
 
 # Dev verification & benchmark scripts (not app code)
+audit-tracking.mjs
 spatial-measure.mjs
 spatial-measure-churn.mjs
 spatial-scrollzoom.mjs

@@ -6,6 +6,7 @@
  * backend would replace later, so it only talks in VisibleItem[].
  */
 import {
+  cleanPostText,
   lineClampText,
   twitterImageUrl,
 } from "@/lib/bookmark-utils";
@@ -246,7 +247,7 @@ export const createDomRenderer = (
       handle.textContent = `@${full.authorHandle}`;
       handle.href = full.url;
     }
-    if (text) text.textContent = lineClampText(full.text || "", hasImage ? 90 : 150);
+    if (text) text.textContent = lineClampText(cleanPostText(full.text || ""), hasImage ? 90 : 150);
   };
 
   const renderImpl = (

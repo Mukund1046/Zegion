@@ -7,12 +7,24 @@ import {
 import { requireLocalOrApiKey, sanitizeError } from "@/lib/api-auth";
 import { z } from "zod";
 
-const cookieConfigSchema = z.object({
-  source: z.enum(["auto", "manual"]),
-  browser: z.enum(["chrome", "firefox", "edge", "brave"]).optional(),
-  ct0: z.string().max(1024).optional(),
-  authToken: z.string().max(1024).optional(),
-});
+const cookieConfigSchema = z
+  .object({
+    source: z.enum(["auto", "manual"]),
+    browser: z.enum(["chrome", "firefox", "edge", "brave"]).optional(),
+    ct0: z.string().max(1024).optional(),
+    authToken: z.string().max(1024).optional(),
+  })
+  .superRefine((value, context) => {
+    if (
+      value.source === "manual" &&
+      (!value.ct0?.trim() || !value.authToken?.trim())
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Manual mode requires both ct0 and auth_token.",
+      });
+    }
+  });
 
 export const dynamic = "force-dynamic";
 
