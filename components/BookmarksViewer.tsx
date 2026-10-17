@@ -21,9 +21,12 @@ import {
 import { useDialKit } from "dialkit";
 import type { SpatialCameraApi } from "@/hooks/useSpatialFeed";
 import { cleanPostText } from "@/lib/bookmark-utils";
+import { keyOf as recentSearchKeyOf } from "@/lib/recent-searches";
+import type { RecentSearchEntry } from "@/lib/recent-searches";
 import { Badge } from "@/components/reui/badge";
 import SyncSettingsDialog from "@/components/ui/sync-settings-dialog";
 import { ClassificationReviewDialog } from "@/components/ui/classification-review-dialog";
+import { LibraryBackupsDialog } from "@/components/ui/library-backups-dialog";
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
@@ -82,6 +85,7 @@ function ToolbarRegion({
 
   const [syncSettingsOpen, setSyncSettingsOpen] = useState(false);
   const [classificationReviewOpen, setClassificationReviewOpen] = useState(false);
+const [libraryBackupsOpen, setLibraryBackupsOpen] = useState(false);
 
   const moreParams = useDialKit("More Popover", {
     popoverPaddingX: [4, 0, 24, 1],
@@ -417,6 +421,28 @@ function ToolbarRegion({
                   >
                     Classification history
                   </button>
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 font-medium transition-colors"
+                    style={{
+                      padding: `${moreParams.hoverPaddingY as number}px ${moreParams.hoverPaddingX as number}px`,
+                      borderRadius: moreParams.hoverBorderRadius as number,
+                      background: "transparent",
+                      fontSize: moreParams.popoverFontSize as number,
+                      color: "var(--foreground)",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = state.darkMode ? (moreParams.hoverColorDark as string) : (moreParams.hoverColor as string); }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                    disabled={state.reindexBusy}
+                    onClick={() => setLibraryBackupsOpen(true)}
+                  >
+                    <svg width={moreParams.popoverIconSize as number} height={moreParams.popoverIconSize as number} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-50">
+                      <path d="M21 8v13H3V8" />
+                      <path d="M1 3h22v5H1z" />
+                      <path d="M10 12h4" />
+                    </svg>
+                    Backup & restore
+                  </button>
                   <div className="border-t my-1 mx-2" style={{ borderColor: state.darkMode ? moreParams.dividerColorDark as string : moreParams.dividerColor as string }} />
                   <button
                     type="button"
@@ -527,6 +553,17 @@ function ToolbarRegion({
         open={classificationReviewOpen}
         onOpenChange={setClassificationReviewOpen}
         bookmarks={state.allBookmarks}
+      />
+      <LibraryBackupsDialog
+        open={libraryBackupsOpen}
+        onOpenChange={setLibraryBackupsOpen}
+        busy={state.reindexBusy}
+        onCreateBackup={() =>
+          actions.runServerAction("/api/backup", "Backing up library.", "Backup created", "reindex", {
+            reload: false,
+          })
+        }
+        onRestoreBackup={(backupId) => actions.restoreLibraryBackup(backupId)}
       />
     </div>
   );
@@ -657,6 +694,23 @@ function LightboxOverlay({
     </div>
   );
 }
+
+const RECENT_TYPE_LABELS: Record<string, string> = {
+  all: "Text",
+  author: "Author",
+  category: "Category",
+  domain: "Domain",
+  linkedDomain: "Domain",
+  site: "Site",
+  media: "Media",
+};
+const RECENT_GLYPHS: Record<string, string> = {
+  author: "@",
+  category: "#",
+  domain: "d:",
+  linkedDomain: "d:",
+  site: "s:",
+};
 
 function SearchCommand({
   open,
@@ -823,6 +877,23 @@ function SearchCommand({
   }, [sites, prefixQuery, cmdParams.maxResults]);
 
   const maxBookmarkResults = cmdParams.maxResults as number;
+  const recentItems = useMemo(() => (state.recentSearches ?? []).slice(0, 8), [state.recentSearches]);
+
+  const handleRestoreRecent = useCallback(
+    (entry: RecentSearchEntry) => {
+      appliedRef.current = true;
+      actions.restoreRecentSearch(entry);
+      onOpenChange(false);
+    },
+    [actions, onOpenChange]
+  );
+
+  const handleRemoveRecent = useCallback(
+    (entry: RecentSearchEntry) => {
+      actions.removeRecentSearch(entry);
+    },
+    [actions]
+  );
 
   const bookmarkResults = useMemo(() => {
     if (prefix) return [];
@@ -1160,19 +1231,99 @@ function SearchCommand({
                ))}
              </div>
            )}
-          {!prefix && (
-            <>
-              <div
-                className="flex items-center justify-between text-xs text-muted-foreground/60"
-                style={{
-                  paddingTop: 4,
-                  paddingRight: 12,
-                  paddingBottom: 8,
-                  paddingLeft: 12,
-                }}
-              >
-                <span>Bookmark results</span>
-              </div>
+           {!prefix && (
+             <>
+               {recentItems.length > 0 && (
+                 <>
+                   <div
+                     className="flex items-center justify-between text-xs text-muted-foreground/60"
+                     style={{
+                       paddingTop: 4,
+                       paddingRight: 12,
+                       paddingBottom: 6,
+                       paddingLeft: 12,
+                     }}
+                   >
+                     <span>Recent</span>
+                     <button
+                       type="button"
+                       onClick={() => actions.clearRecentSearches()}
+                       onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--foreground)"; }}
+                       onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = ""; }}
+                       style={monoStyle}
+                     >
+                       Clear
+                     </button>
+                   </div>
+                   <div className="flex flex-col" style={{ gap: ig }}>
+                     {recentItems.map((entry) => {
+                       const isFacet = entry.facetType !== "all" && !!entry.facetValue;
+                       const label = entry.query || entry.facetValue;
+                       const typeLabel = (RECENT_TYPE_LABELS[entry.facetType] || "Text").toUpperCase();
+                       const glyph = isFacet ? (RECENT_GLYPHS[entry.facetType] || "//") : null;
+                       return (
+                         <div key={recentSearchKeyOf(entry)} className="relative">
+                           <button
+                             type="button"
+                             className="flex w-full items-center gap-3 rounded-xl text-left transition-colors"
+                             style={{
+                               paddingLeft: ipX2 + hpX,
+                               paddingRight: hpX + 40,
+                               paddingTop: ipY2 + hpY,
+                               paddingBottom: ipY2 + hpY,
+                               backgroundColor: "transparent",
+                             }}
+                             onClick={() => handleRestoreRecent(entry)}
+                             onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = state.darkMode ? cmdParams.hoverBgDark as string : cmdParams.hoverBg as string; }}
+                             onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = "transparent"; }}
+                           >
+                             <div className="flex h-6 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-xs font-semibold text-muted-foreground">
+                               {glyph ?? <HugeiconsIcon icon={Search01Icon} size={14} />}
+                             </div>
+                             <span className="min-w-0 flex-1 truncate text-sm font-medium tracking-[-0.06px] text-foreground">{label}</span>
+                             <span className="shrink-0 text-muted-foreground/60" style={monoStyle}>{typeLabel}</span>
+                           </button>
+                           <button
+                             type="button"
+                             aria-label="Remove recent search"
+                             onClick={() => handleRemoveRecent(entry)}
+                             className="absolute top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground/40 transition-colors"
+                             style={{ right: ipX2 }}
+                             onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--foreground)"; }}
+                             onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = ""; }}
+                           >
+                             <HugeiconsIcon icon={Cancel01Icon} size={14} />
+                           </button>
+                         </div>
+                       );
+                     })}
+                   </div>
+                   <div
+                     className="flex items-center justify-between text-xs text-muted-foreground/60"
+                     style={{
+                       paddingTop: 14,
+                       paddingRight: 12,
+                       paddingBottom: 8,
+                       paddingLeft: 12,
+                     }}
+                   >
+                     <span>Bookmark results</span>
+                   </div>
+                 </>
+               )}
+               {!recentItems.length && (
+                 <div
+                   className="flex items-center justify-between text-xs text-muted-foreground/60"
+                   style={{
+                     paddingTop: 4,
+                     paddingRight: 12,
+                     paddingBottom: 8,
+                     paddingLeft: 12,
+                   }}
+                 >
+                   <span>Bookmark results</span>
+                 </div>
+               )}
               <div className="flex flex-col" style={{ gap: ig }}>
                 {bookmarkResults.length === 0 ? (
                   <div className="py-6 text-center text-sm text-muted-foreground">

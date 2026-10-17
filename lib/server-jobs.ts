@@ -20,6 +20,11 @@ import {
   applyReviewedCategories,
   listClassificationRuns,
 } from "./classify/workflow.mjs";
+import {
+  createLibraryBackup,
+  listLibraryBackups,
+  restoreLibraryBackup,
+} from "./library-backup.js";
 
 const APP_ROOT = getRepoRoot();
 const FT_CLI = path.join(APP_ROOT, "node_modules", "fieldtheory", "bin", "ft.mjs");
@@ -27,6 +32,8 @@ const EXPORT_SCRIPT = path.join(APP_ROOT, "lib", "export-bookmarks.js");
 const FOLDER_SYNC_SCRIPT = path.join(APP_ROOT, "lib", "sync-folders.js");
 const MANUAL_SYNC_SCRIPT = path.join(APP_ROOT, "lib", "sync-manual.mjs");
 const CLASSIFY_RUNS_DIR = path.join(path.dirname(getBookmarksOutputPath()), "classify-runs");
+const LIBRARY_BACKUPS_DIR = path.join(path.dirname(getBookmarksOutputPath()), "backups");
+const FOLDERS_OUTPUT_PATH = path.join(path.dirname(getBookmarksOutputPath()), "folders-data.json");
 let activeClassificationRun: string | null = null;
 
 const jobState = {
@@ -173,13 +180,29 @@ async function withJobLock<T>(type: string, job: () => Promise<T>): Promise<T> {
   jobState.running = true;
   jobState.type = type;
   jobState.message =
-    type === "sync" ? "Syncing bookmarks…" : type === "classify" ? "Classifying with Field Theory…" : "Re-indexing cache…";
+    type === "sync"
+      ? "Syncing bookmarks…"
+      : type === "classify"
+        ? "Classifying with Field Theory…"
+        : type === "backup"
+          ? "Backing up library…"
+          : type === "restore"
+            ? "Restoring library…"
+            : "Re-indexing cache…";
   jobState.lastError = null;
 
   try {
     const result = await job();
     jobState.message =
-      type === "sync" ? "Sync complete" : type === "classify" ? "Field Theory classification complete" : "Index refreshed";
+      type === "sync"
+        ? "Sync complete"
+        : type === "classify"
+          ? "Field Theory classification complete"
+          : type === "backup"
+            ? "Backup complete"
+            : type === "restore"
+              ? "Library restored"
+              : "Index refreshed";
     return result;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Job failed";
@@ -413,6 +436,37 @@ export async function reindexBookmarks() {
     };
   });
 }
+
+/** Snapshot the durable library stores into data/output/backups. */
+export async function backupLibrary() {
+  return withJobLock("backup", async () => {
+    const backup = createLibraryBackup({
+      outputDir: path.dirname(getBookmarksOutputPath()),
+      jsonlPath: getJsonlPath(),
+      backupsDir: LIBRARY_BACKUPS_DIR,
+      now: new Date(),
+    });
+    return { ok: true, backup };
+  });
+}
+
+export function listLibraryBackupsAction() {
+  return listLibraryBackups(LIBRARY_BACKUPS_DIR);
+}
+
+/** Replace live stores with a dated backup snapshot (integrity-verified). */
+export async function restoreLibraryBackupAction(backupId: string) {
+  return withJobLock("restore", async () => {
+    const restored = restoreLibraryBackup({
+      backupsDir: LIBRARY_BACKUPS_DIR,
+      backupId,
+      outputDir: path.dirname(getBookmarksOutputPath()),
+      jsonlPath: getJsonlPath(),
+    });
+    return { ok: true, restored, ...readStatusSnapshot() };
+  });
+}
+
 
 /** Run Field Theory's native Codex/Claude classifier against its bookmark DB. */
 export async function classifyBookmarks() {

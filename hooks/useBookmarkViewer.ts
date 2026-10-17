@@ -43,6 +43,15 @@ import {
   twitterImageUrl,
 } from "@/lib/bookmark-utils";
 import { apiFetch } from "@/lib/client-api";
+import {
+  RECENT_SEARCH_KEY,
+  clearRecentSearches as clearRecentSearchList,
+  keyOf as recentSearchKeyOf,
+  recordRecentSearch as recordRecentSearchList,
+  removeRecentSearch as removeRecentSearchFromList,
+  sanitizeRecentSearches as sanitizeRecentSearchList,
+} from "@/lib/recent-searches";
+import type { RecentSearchEntry } from "@/lib/recent-searches";
 import type {
   Bookmark,
   BookmarkFolder,
@@ -207,7 +216,32 @@ export function useBookmarkViewer(cameraApiRef?: RefObject<SpatialCameraApi | nu
   const [activeSearch, setActiveSearch] = useState("");
   const [activeFacetType, setActiveFacetType] = useState<FacetType>("all");
   const [activeFacetValue, setActiveFacetValue] = useState("All bookmarks");
-  const [displayBookmarks, setDisplayBookmarks] = useState<Bookmark[]>([]);
+  // Recent-search history: persisted under its own localStorage key, separate
+  // from the active-filter state in kairos_state. Recorded on applied text
+  // searches and facet selections (never folder navigation); restored via the
+  // normal search/facet apply path so Back scope and camera law stay intact.
+  const [recentSearches, setRecentSearches] = useState<RecentSearchEntry[]>([]);
+  const recentSearchesRef = useRef<RecentSearchEntry[]>([]);
+  const setPersistedRecentSearches = useCallback((next: RecentSearchEntry[]) => {
+    recentSearchesRef.current = next;
+    setRecentSearches(next);
+    try {
+      storageSet(RECENT_SEARCH_KEY, JSON.stringify(next));
+    } catch {}
+  }, []);
+  const recordRecentSearchEntry = useCallback(
+    (query: string, facetType: FacetType, facetValue: string) => {
+      setPersistedRecentSearches(
+        recordRecentSearchList(recentSearchesRef.current, {
+          query,
+          facetType,
+          facetValue,
+          at: Date.now(),
+        })
+      );
+    },
+    [setPersistedRecentSearches]
+  );  const [displayBookmarks, setDisplayBookmarks] = useState<Bookmark[]>([]);
   const [darkMode, setDarkMode] = useState(false);
   /** Pre-entry state for Back navigation. Written once on the fully-inactive
    *  → filtered transition (text query or facet entry); refinements while
@@ -1538,6 +1572,37 @@ export function useBookmarkViewer(cameraApiRef?: RefObject<SpatialCameraApi | nu
     [reloadBookmarks]
   );
 
+  // Restores a dated library snapshot through /api/backup/restore and
+  // reloads the corpus. Shares the reindex busy slot so Sync/Re-index/
+  // Classify stay locked out while live stores are being replaced.
+  const restoreLibraryBackupAction = useCallback(
+    async (backupId: string) => {
+      setSyncStatusText("Restoring library…");
+      setSyncStatusTone("working");
+      setReindexBusy(true);
+      try {
+        const response = await apiFetch("/api/backup/restore", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ backupId }),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "Restore failed");
+        await reloadBookmarks();
+        setSyncStatusText("Library restored");
+        setSyncStatusTone("success");
+        return payload;
+      } catch (error) {
+        setSyncStatusText(error instanceof Error ? error.message : "Restore failed");
+        setSyncStatusTone("error");
+        return null;
+      } finally {
+        setReindexBusy(false);
+      }
+    },
+    [reloadBookmarks]
+  );
+
   const applyFilter = useCallback(
     (folder: string) => {
       if (folder === activeFolder) return;
@@ -1716,6 +1781,9 @@ export function useBookmarkViewer(cameraApiRef?: RefObject<SpatialCameraApi | nu
       }
       setActiveFacetType(type);
       setActiveFacetValue(value);
+      if (type !== "all" && type !== "folder" && value.trim()) {
+        recordRecentSearchEntry(activeSearch, type, value);
+      }
       viewportRef.current?.scrollTo({ top: 0, behavior: "smooth" });
       engineRef.current.profileTrigger = "filter:apply";
       refreshDisplay(
@@ -1787,6 +1855,15 @@ export function useBookmarkViewer(cameraApiRef?: RefObject<SpatialCameraApi | nu
             delete restored.feedScrollY;
             try { storageSet(STORAGE_KEY, JSON.stringify(restored)); } catch {}
           }
+        }
+
+        const recentRaw = storageGet(RECENT_SEARCH_KEY);
+        if (recentRaw) {
+          let parsed: unknown = null;
+          try { parsed = JSON.parse(recentRaw); } catch {}
+          const clean = sanitizeRecentSearchList(parsed);
+          recentSearchesRef.current = clean;
+          setRecentSearches(clean);
         }
 
         const response = await apiFetch("/api/bookmarks");
@@ -2363,6 +2440,7 @@ export function useBookmarkViewer(cameraApiRef?: RefObject<SpatialCameraApi | nu
       })(),
       activeSort,
       activeSearch,
+      recentSearches,
       activeFacetType,
       activeFacetValue,
       darkMode,
@@ -2414,6 +2492,9 @@ export function useBookmarkViewer(cameraApiRef?: RefObject<SpatialCameraApi | nu
           };
         }
         setActiveSearch(value);
+        if (value.trim()) {
+          recordRecentSearchEntry(value, activeFacetType, activeFacetValue);
+        }
         engineRef.current.profileTrigger = "search";
         refreshDisplay(
           allBookmarks,
@@ -2496,6 +2577,48 @@ export function useBookmarkViewer(cameraApiRef?: RefObject<SpatialCameraApi | nu
       applyZoom,
       resetZoom,
       applyFacet,
+      restoreRecentSearch: (entry: RecentSearchEntry) => {
+        const query = typeof entry?.query === "string" ? entry.query.trim() : "";
+        const rawType = typeof entry?.facetType === "string" ? entry.facetType : "all";
+        const facetType = (rawType === "all" || rawType === "folder" ? "all" : rawType) as FacetType;
+        const facetValue = typeof entry?.facetValue === "string" ? entry.facetValue.trim() : "";
+        // Applies as a single refresh with the final combined state (never a
+        // chained query+facet apply, which would refresh twice on stale
+        // closures). Entering filtered state from fully-inactive snapshots
+        // the pre-entry camera exactly like a search or facet entry does.
+        if ((query || facetType !== "all") && !activeSearch.trim() && activeFacetType === "all" && !preEntryRef.current) {
+          preEntryRef.current = {
+            query: activeSearch,
+            facetType: activeFacetType,
+            facetValue: activeFacetValue,
+            camera: cameraApiRef?.current?.snapshotCamera() ?? null,
+          };
+        }
+        setActiveSearch(query);
+        setActiveFacetType(facetType);
+        setActiveFacetValue(facetValue);
+        recordRecentSearchEntry(query, facetType, facetValue);
+        viewportRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+        engineRef.current.profileTrigger = "search";
+        refreshDisplay(
+          allBookmarks,
+          activeFolder,
+          query,
+          facetType,
+          facetValue,
+          activeSort,
+          activeView,
+          false
+        );
+      },
+      removeRecentSearch: (entry: RecentSearchEntry) => {
+        setPersistedRecentSearches(
+          removeRecentSearchFromList(recentSearchesRef.current, recentSearchKeyOf(entry))
+        );
+      },
+      clearRecentSearches: () => {
+        setPersistedRecentSearches(clearRecentSearchList());
+      },
       openLightbox,
       openContextMenu,
       closeLightbox,
@@ -2505,6 +2628,7 @@ export function useBookmarkViewer(cameraApiRef?: RefObject<SpatialCameraApi | nu
       },
       setCopiedItem: (item: CopiedItem) => setCopiedItem(item),
       runServerAction,
+      restoreLibraryBackup: restoreLibraryBackupAction,
       jumpToScrubberMarker,
       jumpToDayScrubberMarker,
       scrollToBookmark,
