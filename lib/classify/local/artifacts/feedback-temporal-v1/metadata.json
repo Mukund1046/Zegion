@@ -1,0 +1,559 @@
+{
+  "modelVersion": "centroids-feedback-v1-2026-09-29",
+  "labelSet": [
+    "career",
+    "commerce",
+    "design",
+    "education",
+    "launch",
+    "opinion",
+    "research",
+    "security",
+    "technique",
+    "tool"
+  ],
+  "trainingDatasetVersion": "dataset-benchmark-v1.json (audited dev) + reviewed resolutions",
+  "labelSource": "gold-audited + zen-validated (weighted)",
+  "goldWeight": 1,
+  "zenWeight": 0.5,
+  "thresholds": null,
+  "embeddingModel": "Xenova/all-MiniLM-L6-v2",
+  "taxonomyVersion": "experimental-001",
+  "normalizationVersion": "v0-raw",
+  "counts": {
+    "technique": 13,
+    "launch": 14,
+    "opinion": 25,
+    "tool": 11,
+    "design": 18,
+    "commerce": 7,
+    "career": 6,
+    "security": 2,
+    "education": 3,
+    "research": 1
+  },
+  "trainIds": {
+    "technique": [
+      {
+        "id": "1633956946221969409",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1909784088422023454",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1974038939548704788",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2016213814119686588",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2028581088377950481",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2037526840584360417",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2041238692656783685",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2017679612352872568",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1534182344508203009",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1650085608419917825",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1934903843764228269",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1989975994825068889",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2068252466903478392",
+        "source": "gold",
+        "weight": 1
+      }
+    ],
+    "launch": [
+      {
+        "id": "2044882359565312468",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2036078689754992886",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2066534707496444317",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1805723845632082196",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1907843695644201141",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1927855052485501062",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1952727329932706210",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2014028990810300498",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2026437523036090525",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2036485780961669214",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2046584943367586172",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2056510383935172798",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2068010372703916292",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1908637180823556308",
+        "source": "gold",
+        "weight": 1
+      }
+    ],
+    "opinion": [
+      {
+        "id": "2057507603278684307",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1723587930751738088",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2064843096496415075",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1911771401154887917",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1928163748746805681",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1940931467963748472",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1952994789747769621",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2021716869556912271",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2039089908657127510",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2057292813935722905",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2066160123953958947",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2057450976827572508",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2037209132462178678",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1937691481676087610",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2049905792099254481",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1912954344724406475",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1941115208401109174",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2037380160698356085",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2054229984898638147",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1980180029125628374",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2058363539472195878",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1926973846910914703",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1910813233008509191",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1938749650200035769",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2034335298490871987",
+        "source": "gold",
+        "weight": 1
+      }
+    ],
+    "tool": [
+      {
+        "id": "1650030264591200257",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1911748089750183967",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1938955049142755783",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2015462204632625171",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2026358091076268096",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2045797713670033874",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2056423110401008123",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2061162886542618979",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2039091847436308747",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2040502870093750544",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2044563616385445987",
+        "source": "gold",
+        "weight": 1
+      }
+    ],
+    "design": [
+      {
+        "id": "1936843996858335428",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2020073233698246967",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2032797486138474759",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2040697950888951900",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2048746231938355380",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2057342725763293464",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1940537021413609942",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2038342469642010939",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2009916703350927658",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1951338420267262297",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2016893298095612259",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2049481279369007138",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2050192347158208528",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2058446207480197532",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2059992231830864151",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2014092378554892783",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2026590527467258065",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2023170020142887407",
+        "source": "gold",
+        "weight": 1
+      }
+    ],
+    "commerce": [
+      {
+        "id": "1902685604594548908",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1923701825099972627",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1954998015485440036",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2008934114649624764",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2017233532209295869",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2064780133240614984",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1932124812350259287",
+        "source": "gold",
+        "weight": 1
+      }
+    ],
+    "career": [
+      {
+        "id": "1894402663548153888",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1918368231523533045",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1940811512500633910",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1981573356010025308",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2044039940967936473",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1940811515256262897",
+        "source": "gold",
+        "weight": 1
+      }
+    ],
+    "security": [
+      {
+        "id": "1905611293509169513",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1941899627235598489",
+        "source": "gold",
+        "weight": 1
+      }
+    ],
+    "education": [
+      {
+        "id": "2037737465889595773",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2038024528027406474",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "1906006240855244818",
+        "source": "gold",
+        "weight": 1
+      }
+    ],
+    "research": [
+      {
+        "id": "2057600008002900285",
+        "source": "gold",
+        "weight": 1
+      }
+    ]
+  },
+  "createdAt": "2026-09-29T07:53:49.661Z",
+  "note": "Raw Zen output never accepted: reviewed entries require reviewer + reviewedAt. Promotion only via eval/promote.mjs."
+}

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { useDialKit } from "dialkit";
-import { isLowSpecDevice } from "@/lib/bookmark-utils";
+import { isLowSpecDevice, readRememberedZoom, writeRememberedZoom } from "@/lib/bookmark-utils";
 import { kairosPerf } from "@/lib/perf";
 import type { Bookmark, ViewMode } from "@/lib/types";
 import { useCardStyle } from "@/hooks/useCardStyle";
@@ -102,8 +102,24 @@ const toRenderBookmark = (bookmark: Bookmark): BookmarkForRender => ({
 });
 
 export interface SpatialFeedHandlers {
-  onOpenLightbox: (element: HTMLDivElement, bookmark: Bookmark) => void;
+  onOpenLightbox: (element: HTMLDivElement, bookmark: Bookmark, resolveBookmarkRect?: (id: string) => DOMRect | null) => void;
   onOpenContextMenu: (bookmark: Bookmark, x: number, y: number) => void;
+}
+
+/** Pre-search spatial context for Back navigation. Target values capture
+ *  the user's intended/resting view, valid even mid-gesture. */
+export interface CameraSnapshot {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+/** Ref bridge filled by the hook so the app shell can snapshot/restore the
+ *  feed camera without re-renders. Restores reuse the existing
+ *  settle/reset pipeline — no second camera system. */
+export interface SpatialCameraApi {
+  snapshotCamera: () => CameraSnapshot | null;
+  requestRestore: (snapshot: CameraSnapshot) => void;
 }
 
 export function useSpatialFeed(
@@ -147,6 +163,13 @@ export function useSpatialFeed(
   });
   const pendingGapRef = useRef<number | null>(null);
   const gapDebounceRef = useRef<number | null>(null);
+  /** Trailing debounce for remembered-zoom writes. Scheduled only from the
+   *  wheel-zoom branch (never from the rAF loop), so a gesture collapses
+   *  into a single localStorage write after it settles. */
+  const zoomPersistTimerRef = useRef<number | null>(null);
+  /** Single-use Back-navigation restore, set via requestRestore and consumed
+   *  by the data-sync effect right after reloadData (same paint). */
+  const pendingRestoreRef = useRef<CameraSnapshot | null>(null);
 
   const viewportRef = useRef<HTMLElement>(null);
   const worldRef = useRef<HTMLDivElement>(null);
@@ -447,6 +470,20 @@ export function useSpatialFeed(
 
   ensureLoopRef.current = ensureLoop;
 
+  const scheduleZoomPersist = useCallback(() => {
+    if (zoomPersistTimerRef.current !== null) {
+      window.clearTimeout(zoomPersistTimerRef.current);
+      zoomPersistTimerRef.current = null;
+    }
+    zoomPersistTimerRef.current = window.setTimeout(() => {
+      zoomPersistTimerRef.current = null;
+      const eng = engineRef.current;
+      if (!eng || eng.fluid || eng.solveT >= 0) return;
+      if (Math.abs(eng.target.zoom - eng.camera.zoom) > 0.0001) return;
+      writeRememberedZoom(eng.target.zoom);
+    }, 600);
+  }, []);
+
   const reloadData = useCallback(
     (bookmarksList: Bookmark[], view: ViewMode) => {
       const engine = engineRef.current;
@@ -528,6 +565,7 @@ export function useSpatialFeed(
           engine.lastZoomInput = performance.now();
           engine.target.zoom = nextZoom;
           ensureLoop();
+          scheduleZoomPersist();
         }
         return;
       }
@@ -569,7 +607,43 @@ export function useSpatialFeed(
         event.preventDefault();
         handlersRef.current.onOpenContextMenu(bookmark, event.clientX, event.clientY);
       } else {
-        handlersRef.current.onOpenLightbox(cardEl ?? (target as HTMLDivElement), bookmark);
+        handlersRef.current.onOpenLightbox(cardEl ?? (target as HTMLDivElement), bookmark, (id) => {
+          const currentEngine = engineRef.current;
+          const currentViewport = viewportRef.current;
+          if (!currentEngine || !currentViewport) return null;
+          const index = currentEngine.bookmarks.findIndex((entry) => entry.bookmarkId === id);
+          if (index < 0) return null;
+          const item = currentEngine.layoutItems[index];
+          if (!item) return null;
+          const zoom = currentEngine.camera.zoom;
+          const currentX = item.x * zoom - currentEngine.camera.x;
+          const currentY = item.y * zoom - currentEngine.camera.y;
+          const currentW = item.w * zoom;
+          const currentH = item.h * zoom;
+          const isOutside = currentX < 0 || currentY < 0 || currentX + currentW > currentEngine.viewportW || currentY + currentH > currentEngine.viewportH;
+          if (isOutside) {
+            // Follow the selected presentation card with the existing camera;
+            // leave zoom and layout untouched. This keeps long slide runs from
+            // returning to a card that has scrolled out of the feed viewport.
+            clearAnchor();
+            settleAnchorRef.current = null;
+            currentEngine.camera.x = item.x * zoom + currentW / 2 - currentEngine.viewportW / 2;
+            currentEngine.camera.y = item.y * zoom + currentH / 2 - currentEngine.viewportH * 0.4;
+            currentEngine.target.x = currentEngine.camera.x;
+            currentEngine.target.y = currentEngine.camera.y;
+            hardClampCamera(currentEngine, currentEngine.camera);
+            hardClampCamera(currentEngine, currentEngine.target);
+            renderFrame();
+            ensureLoop();
+          }
+          const rect = currentViewport.getBoundingClientRect();
+          return new DOMRect(
+            rect.left + item.x * zoom - currentEngine.camera.x,
+            rect.top + item.y * zoom - currentEngine.camera.y,
+            item.w * zoom,
+            item.h * zoom
+          );
+        });
       }
     };
 
@@ -585,8 +659,26 @@ export function useSpatialFeed(
     lastDataRef.current = { bookmarks, view: activeViewRef.current };
     reloadData(bookmarks, activeViewRef.current);
 
+    // Mount-only restore: apply the remembered zoom after the initial
+    // grid is computed but before the first paint, so the first visible
+    // frame is already at the saved zoom (no default → saved jump).
+    // Later reloadData() calls (search/filter/sort/view) intentionally
+    // reset to zoom 1 and are left untouched.
+    const savedZoom = readRememberedZoom(engine.interactionMinZoom, engine.maxZoom);
+    if (savedZoom !== null) {
+      engine.camera.zoom = savedZoom;
+      engine.target.zoom = savedZoom;
+      computeGrid(engine, savedZoom);
+      engine.lastGridZ = savedZoom;
+      renderFrame();
+    }
+
     return () => {
       cancelled = true;
+      if (zoomPersistTimerRef.current !== null) {
+        window.clearTimeout(zoomPersistTimerRef.current);
+        zoomPersistTimerRef.current = null;
+      }
       viewport.removeEventListener("wheel", onWheel);
       viewport.removeEventListener("pointermove", onPointerMove);
       viewport.removeEventListener("click", onClick);
@@ -690,11 +782,49 @@ export function useSpatialFeed(
     if (last && last.bookmarks === bookmarks && last.view === activeView) return;
     lastDataRef.current = { bookmarks, view: activeView };
     reloadData(bookmarks, activeView);
+    // Back-navigation restore: applied in the same synchronous pass as the
+    // reset above (before paint), mirroring resetZoom's settle sequence with
+    // the snapshotted values instead of zoom 1. Stale world sizes are
+    // handled by hardClamp; the flag is single-use.
+    const pending = pendingRestoreRef.current;
+    pendingRestoreRef.current = null;
+    if (pending) {
+      const engine = engineRef.current;
+      const renderer = rendererRef.current;
+      if (engine && renderer && Number.isFinite(pending.x) && Number.isFinite(pending.y) && Number.isFinite(pending.zoom)) {
+        clearAnchor();
+        settleAnchorRef.current = null;
+        engine.fluid = false;
+        engine.solveT = -1;
+        engine.solveFrom.length = 0;
+        engine.solveTarget.length = 0;
+        engine.target.x = pending.x;
+        engine.target.y = pending.y;
+        engine.target.zoom = pending.zoom;
+        engine.camera.x = pending.x;
+        engine.camera.y = pending.y;
+        engine.camera.zoom = pending.zoom;
+        computeGrid(engine, pending.zoom);
+        engine.lastGridZ = pending.zoom;
+        hardClampCamera(engine, engine.camera);
+        hardClampCamera(engine, engine.target);
+        renderFrame();
+        ensureLoop();
+      }
+    }
   }, [bookmarks, activeView, reloadData]);
 
   return {
     refs: { viewportRef, worldRef },
     actions: {
+      snapshotCamera: () => {
+        const engine = engineRef.current;
+        if (!engine || !readyRef.current) return null;
+        return { x: engine.target.x, y: engine.target.y, zoom: engine.target.zoom };
+      },
+      requestRestore: (snapshot: CameraSnapshot) => {
+        pendingRestoreRef.current = snapshot;
+      },
       zoomBy: (steps: number) => {
         if (zoomInputLockedRef.current) return;
         const engine = engineRef.current;

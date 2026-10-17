@@ -30,10 +30,11 @@ function firstDefined(...values: (string | undefined)[]): string | undefined {
 }
 
 function getDataDir(): string {
-  return firstDefined(
-    process.env.FT_DATA_DIR,
-    path.join(os.homedir(), ".ft-bookmarks")
-  )!;
+  const configuredDir = firstDefined(process.env.FT_DATA_DIR);
+  // Resolve the home-directory fallback lazily. Besides preserving the
+  // existing path choice, this prevents Next's output tracer from eagerly
+  // walking a developer's real ~/.ft-bookmarks during desktop packaging.
+  return configuredDir || path.join(os.homedir(), ".ft-bookmarks");
 }
 
 export function getRequiredEnv(name: string): string {

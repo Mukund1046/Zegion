@@ -1,11 +1,27 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
+import { isDesktopRequestAllowed } from "@/lib/desktop-origin-guard.mjs";
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (pathname.startsWith("/api/")) {
+    // The desktop shell serves the app on an ephemeral loopback origin. Reject
+    // browser cross-origin writes so an unrelated website cannot trigger
+    // local sync, credential, or bookmark operations through that listener.
+    if (process.env.ZEGION_DESKTOP === "1") {
+      if (!isDesktopRequestAllowed({
+        origin: request.headers.get("origin"),
+        requestOrigin: request.nextUrl.origin,
+        requestHost: request.headers.get("host"),
+        method: request.method,
+        fetchSite: request.headers.get("sec-fetch-site"),
+      })) {
+        return NextResponse.json({ error: "Cross-origin request rejected." }, { status: 403 });
+      }
+    }
+
     const ip = getClientIp(request);
 
     const tier =

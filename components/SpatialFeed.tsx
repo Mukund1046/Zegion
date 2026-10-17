@@ -1,7 +1,8 @@
 "use client";
 
 import type { Bookmark, ViewMode } from "@/lib/types";
-import { useSpatialFeed } from "@/hooks/useSpatialFeed";
+import { useSpatialFeed, type SpatialCameraApi } from "@/hooks/useSpatialFeed";
+import type { RefObject } from "react";
 
 /**
  * The main-feed spatial surface. It renders the app's `displayBookmarks` on the
@@ -16,6 +17,7 @@ export default function SpatialFeed({
   isFilterActive,
   onOpenLightbox,
   onOpenContextMenu,
+  cameraApiRef,
 }: {
   bookmarks: Bookmark[];
   activeView: ViewMode;
@@ -23,11 +25,20 @@ export default function SpatialFeed({
   isFilterActive: boolean;
   onOpenLightbox: (element: HTMLDivElement, bookmark: Bookmark) => void;
   onOpenContextMenu: (bookmark: Bookmark, x: number, y: number) => void;
+  /** Filled by the hook with snapshot/restore fns (no re-renders). */
+  cameraApiRef?: RefObject<SpatialCameraApi | null>;
 }) {
-  const { refs } = useSpatialFeed(bookmarks, activeView, isFilterActive, {
+  const { refs, actions } = useSpatialFeed(bookmarks, activeView, isFilterActive, {
     onOpenLightbox,
     onOpenContextMenu,
   });
+
+  if (cameraApiRef) {
+    cameraApiRef.current = {
+      snapshotCamera: actions.snapshotCamera,
+      requestRestore: actions.requestRestore,
+    };
+  }
 
   return (
     <main

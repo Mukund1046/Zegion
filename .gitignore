@@ -1,5 +1,8 @@
 node_modules/
 .next/
+.desktop/
+out/
+release/
 *.tsbuildinfo
 next-env.d.ts
 
@@ -27,11 +30,44 @@ spatialv2.hooks.useSpatialViewer.ts.bak
 *.bak
 *.bak.ts
 
+# Personal-content classification artifacts: the frozen gold benchmark,
+# raw datasets, and review/audit metadata contain real bookmark text and
+# IDs. They are local evidence for a public repo — regenerate via
+# lib/classify/eval/build-dataset*.mjs on a fresh clone.
+lib/classify/eval/dataset.json
+lib/classify/eval/dataset-v2.json
+lib/classify/eval/dataset-benchmark-v1.json
+lib/classify/eval/human-review.json
+lib/classify/eval/audit-decisions.json
+lib/classify/eval/audit-manifest-v1.json
+lib/classify/eval/reviewed-*.json
+lib/classify/eval/refresh-*.json
+lib/classify/eval/harness-*.json
+
 # Reference sources copied in for study
 Reference/
 
-# Dev verification & benchmark scripts (not app code)
-audit-tracking.mjs
+# Dev verification & benchmark scripts (not app code).
+# Leading / scope these to the repo root: several of these names also match
+# curated evidence under lib/classify/eval/ that must not be accidentally
+# ignored there (see the personal-content block below instead).
+/audit-tracking.mjs
+/harness-*.json
+/calibration-*.json
+/eval-report-*.json
+/preds-*.json
+/shadow-*.json
+/stratify-*.json
+/ood-*.json
+/production-audit.json
+/refresh-*.json
+/reviewed-*.json
+/harness-var-*.json
+/harness-zen-*.json
+/harness-local-*.json
+/harness-regex.json
+/harness-temporal-*.json
+/calibration-*.json
 spatial-measure.mjs
 spatial-measure-churn.mjs
 spatial-scrollzoom.mjs

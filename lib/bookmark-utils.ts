@@ -43,6 +43,23 @@ export const storageSet = (key: string, value: string): void => {
 export const clamp = (value: number, min: number, max: number) =>
   Math.max(min, Math.min(max, value));
 
+/** Remembered spatial-feed zoom. Mount-only restore + debounced persist;
+ *  the zoom mathematics themselves live entirely in the spatial engine. */
+export const SPATIAL_ZOOM_KEY = "kairos-spatial-zoom";
+
+export const readRememberedZoom = (min: number, max: number): number | null => {
+  const raw = storageGet(SPATIAL_ZOOM_KEY);
+  if (raw === null) return null;
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return null;
+  return clamp(value, min, max);
+};
+
+export const writeRememberedZoom = (zoom: number): void => {
+  if (!Number.isFinite(zoom)) return;
+  storageSet(SPATIAL_ZOOM_KEY, String(zoom));
+};
+
 export const parseDate = (value?: string | null) => {
   if (!value) return null;
   const date = new Date(value);

@@ -9,9 +9,9 @@ export async function GET(request: Request) {
   const auth = requireLocalOrApiKey(request);
   if (auth) return auth;
 
-  const data = readBookmarksData();
   const url = new URL(request.url);
   const fields = url.searchParams.get("fields");
+  const data = readBookmarksData({ applyReviewedCategories: fields !== "spatial" });
 
   if (fields === "spatial") {
     const bookmarks = data.bookmarks.map((bookmark: Bookmark) => ({

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type SyntheticEvent } from "react";
 import { createPortal } from "react-dom";
 import { ExpandableTabs } from "@/components/motion/expandable-tabs";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -11,13 +11,62 @@ import { useDialKit } from "dialkit";
 
 interface SpatialFocusDetailsProps {
   bookmark: BookmarkForRender | null;
+  bookmarkIds: string[];
+  onNavigate: (bookmarkId: string, direction: -1 | 1) => Promise<void>;
   phase: "closed" | "opening" | "opened" | "closing";
   isActive: boolean;
   isAnimating: boolean;
 }
 
-export function SpatialFocusDetails({ bookmark, phase, isActive, isAnimating }: SpatialFocusDetailsProps) {
+export function SpatialFocusDetails({ bookmark, bookmarkIds, onNavigate, phase, isActive, isAnimating }: SpatialFocusDetailsProps) {
   const [activeTab, setActiveTab] = useState<string | null>(null);
+  const currentIndex = bookmark ? bookmarkIds.indexOf(bookmark.id) : -1;
+  const [requestedIndex, setRequestedIndex] = useState(currentIndex);
+  const requestedIndexRef = useRef(currentIndex);
+  const pendingRequestsRef = useRef(0);
+  const displayedBookmarkIdRef = useRef(bookmark?.id ?? null);
+  displayedBookmarkIdRef.current = bookmark?.id ?? null;
+  const canNavigate = phase === "opened" && !isAnimating && currentIndex >= 0;
+  const navigate = (direction: -1 | 1) => {
+    if (!canNavigate) return;
+    const nextIndex = requestedIndexRef.current + direction;
+    const nextId = bookmarkIds[nextIndex];
+    if (!nextId) return;
+    requestedIndexRef.current = nextIndex;
+    setRequestedIndex(nextIndex);
+    pendingRequestsRef.current += 1;
+    void onNavigate(nextId, direction).finally(() => {
+      pendingRequestsRef.current = Math.max(0, pendingRequestsRef.current - 1);
+    });
+  };
+
+  useEffect(() => {
+    if (pendingRequestsRef.current > 0) return;
+    const displayedIndex = bookmarkIds.indexOf(displayedBookmarkIdRef.current || "");
+    requestedIndexRef.current = displayedIndex;
+    setRequestedIndex(displayedIndex);
+  }, [bookmark?.id, bookmarkIds, phase]);
+
+  useEffect(() => {
+    if (!canNavigate) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      if (
+        target.isContentEditable ||
+        target.closest("input, textarea, select, button, a, [role='button'], [role='tab'], [role='slider'], [role='combobox'], [role='menuitem'], summary")
+      ) return;
+
+      const direction = event.key === "ArrowLeft" ? -1 : 1;
+      const nextId = bookmarkIds[requestedIndexRef.current + direction];
+      if (!nextId) return;
+      event.preventDefault();
+      navigate(direction);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [bookmarkIds, canNavigate, currentIndex, onNavigate]);
 
   // Reset to Post tab when a new bookmark is focused
   useEffect(() => {
@@ -154,34 +203,60 @@ export function SpatialFocusDetails({ bookmark, phase, isActive, isAnimating }: 
 
   if (!bookmark || phase !== "opened") return null;
 
+  const stopPresentationEvent = (event: SyntheticEvent) => event.stopPropagation();
+  const arrowButtonClass = "pointer-events-auto fixed top-1/2 z-[40003] inline-flex size-10 -translate-y-1/2 items-center justify-center border-0 bg-transparent p-0 text-foreground transition-opacity hover:opacity-70 active:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-30";
   const tabs = (
-    <div className="fixed bottom-6 right-6 z-[40002] pointer-events-auto">
-      <ExpandableTabs
-        items={items}
-        value={activeTab}
-        onValueChange={(id) => {
-          if (typeof window !== "undefined" && (window as unknown as { __SPATIAL_FOCUS_DEBUG?: boolean }).__SPATIAL_FOCUS_DEBUG) {
-            console.log(`[SpatialFocusDetails] onValueChange ${id} (prev ${activeTab})`);
-          }
-          setActiveTab(id);
-        }}
-        defaultValue={null}
-        disableExpand
-        barGap={focusDetailsParams.barGap as number}
-        activeLeftPad={focusDetailsParams.activeLeftPad as number}
-        activeRightPad={focusDetailsParams.activeRightPad as number}
-        labelGap={focusDetailsParams.labelGap as number}
-        panelGap={focusDetailsParams.panelGap as number}
-        classNames={{
-          root: "overlay-pop border-0 bg-popover focus-details-card",
-          bar: "bg-transparent",
-          tab: "text-muted-foreground hover:text-foreground border-0",
-          activeTab: "text-foreground border-0",
-          pill: "bg-muted border-0 shadow-none ring-0",
-          panel: "bg-transparent",
-        }}
-      />
-    </div>
+    <>
+      <div className="fixed bottom-6 right-6 z-[40002] pointer-events-auto">
+        <ExpandableTabs
+          items={items}
+          value={activeTab}
+          onValueChange={(id) => {
+            if (typeof window !== "undefined" && (window as unknown as { __SPATIAL_FOCUS_DEBUG?: boolean }).__SPATIAL_FOCUS_DEBUG) {
+              console.log(`[SpatialFocusDetails] onValueChange ${id} (prev ${activeTab})`);
+            }
+            setActiveTab(id);
+          }}
+          defaultValue={null}
+          disableExpand
+          barGap={focusDetailsParams.barGap as number}
+          activeLeftPad={focusDetailsParams.activeLeftPad as number}
+          activeRightPad={focusDetailsParams.activeRightPad as number}
+          labelGap={focusDetailsParams.labelGap as number}
+          panelGap={focusDetailsParams.panelGap as number}
+          classNames={{
+            root: "overlay-pop border-0 bg-popover focus-details-card",
+            bar: "bg-transparent",
+            tab: "text-muted-foreground hover:text-foreground border-0",
+            activeTab: "text-foreground border-0",
+            pill: "bg-muted border-0 shadow-none ring-0",
+            panel: "bg-transparent",
+          }}
+        />
+      </div>
+      <div className="pointer-events-none fixed inset-0 z-[40002]" role="group" aria-label="Bookmark navigation">
+        <button
+          type="button"
+          aria-label="Previous bookmark"
+          className={`${arrowButtonClass} left-4`}
+          disabled={!canNavigate || requestedIndex <= 0}
+          onPointerDown={stopPresentationEvent}
+          onClick={(event) => { stopPresentationEvent(event); navigate(-1); }}
+        >
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="size-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
+        </button>
+        <button
+          type="button"
+          aria-label="Next bookmark"
+          className={`${arrowButtonClass} right-4`}
+          disabled={!canNavigate || requestedIndex < 0 || requestedIndex >= bookmarkIds.length - 1}
+          onPointerDown={stopPresentationEvent}
+          onClick={(event) => { stopPresentationEvent(event); navigate(1); }}
+        >
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="size-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>
+        </button>
+      </div>
+    </>
   );
 
   // The original feed lives inside .app-shell (z-index: 0), while the ripple

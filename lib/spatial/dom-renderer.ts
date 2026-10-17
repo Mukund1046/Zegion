@@ -14,6 +14,11 @@ import { kairosPerf } from "@/lib/perf";
 import type { Camera, VisibleItem, ImageSize } from "@/lib/spatial/spatial-engine";
 import { DOM_WRITE_EPS, imageRank } from "@/lib/spatial/spatial-engine";
 import type { Bookmark } from "@/lib/types";
+import {
+  beginImageAssignment,
+  invalidateImageAssignment,
+  isCurrentImageAssignment,
+} from "@/lib/image-load-guard.mjs";
 
 /** How card geometry is applied this frame.
  *  - `screen`: the camera is baked into screen-space x/y/w/h (rest + settle).
@@ -125,6 +130,9 @@ export const createDomRenderer = (
   const resetCardSkeleton = (element: HTMLDivElement) => {
     const image = element.querySelector<HTMLImageElement>("img");
     if (image) {
+      invalidateImageAssignment(image);
+      image.onload = null;
+      image.onerror = null;
       image.removeAttribute("src");
       image.alt = "";
     }
@@ -148,6 +156,9 @@ export const createDomRenderer = (
     const image = element.querySelector<HTMLImageElement>("img");
     const mediaWrap = (element as HTMLDivElement & { _media?: HTMLElement })._media;
     if (image) {
+      invalidateImageAssignment(image);
+      image.onload = null;
+      image.onerror = null;
       image.removeAttribute("src");
       image.alt = "";
     }
@@ -181,7 +192,10 @@ export const createDomRenderer = (
     const desired = twitterImageUrl(bookmark.images[0].url, IMAGE_SIZES[bucket]);
     const cached = imageCache.get(bookmark.id);
 
-    if (cached && imageRank[cached.bucket] >= imageRank[bucket]) {
+    if (cached && cached.src === desired && imageRank[cached.bucket] >= imageRank[bucket]) {
+      invalidateImageAssignment(image);
+      image.onload = null;
+      image.onerror = null;
       if (image.src !== cached.src) image.src = cached.src;
       image.alt = bookmark.text.substring(0, 80);
       mediaWrap.classList.remove("loading-image");
@@ -192,6 +206,7 @@ export const createDomRenderer = (
     mediaWrap.classList.add("loading-image");
     element.classList.remove("loading");
     image.alt = bookmark.text.substring(0, 80);
+    const generation = beginImageAssignment(image);
 
     // Load directly into the visible <img> so the browser starts fetching the
     // moment the card is served (no throwaway preload that stalls the skeleton
@@ -201,19 +216,29 @@ export const createDomRenderer = (
       // The pool element may have been evicted and recycled for a different
       // bookmark before this load resolves -- touching it here would paint the
       // wrong image onto the wrong card. Verify ownership first.
-      if (elToBookmark.get(element) !== bookmark) return;
+      if (
+        !isCurrentImageAssignment(image, generation, desired) ||
+        elToBookmark.get(element) !== bookmark
+      ) return;
       const latest = imageCache.get(bookmark.id);
       if (latest && imageRank[latest.bucket] > imageRank[bucket]) return;
       mediaWrap.classList.remove("loading-image");
       imageCache.set(bookmark.id, { src: desired, bucket });
     };
     image.onerror = () => {
-      if (elToBookmark.get(element) !== bookmark) return;
+      if (
+        !isCurrentImageAssignment(image, generation, desired) ||
+        elToBookmark.get(element) !== bookmark
+      ) return;
       const latest = imageCache.get(bookmark.id);
       if (latest && imageRank[latest.bucket] > imageRank[bucket]) return;
       mediaWrap.classList.remove("loading-image");
     };
-    if (image.src !== desired) image.src = desired;
+    if (image.getAttribute("src") !== desired) image.src = desired;
+    else if (image.complete) {
+      if (image.naturalWidth > 0) image.onload?.(new Event("load"));
+      else image.onerror?.(new Event("error"));
+    }
   };
 
   /** Rich mode only: bake the existing application card body (author/handle,
@@ -313,12 +338,22 @@ export const createDomRenderer = (
         }
         existing.mode = mode;
         const bucket = item.bucket;
-        if (bucket !== existing.loadedBucket && !deferUpgrade) {
+        const bookmark = bookmarks.get(id);
+        const bookmarkChanged =
+          bookmark !== undefined && elToBookmark.get(existing.poolEl) !== bookmark;
+        if (bookmarkChanged && bookmark) {
+          // Data reloads can replace bookmark objects without remounting their
+          // active pooled cards. Rebind ownership and refresh content/source
+          // in place; pool membership and card geometry remain unchanged.
+          elToBookmark.set(existing.poolEl, bookmark);
+          renderCardContent(existing.poolEl, bookmark, bucket);
+          existing.loadedBucket = bucket;
+          kairosPerf.count("render:content");
+        } else if (bucket !== existing.loadedBucket && !deferUpgrade) {
           const cached = imageCache.get(id);
           const isUpgrade = cached ? imageRank[bucket] > imageRank[cached.bucket] : true;
           if (isUpgrade) {
             existing.loadedBucket = bucket;
-            const bookmark = bookmarks.get(id);
             if (bookmark) renderCardContent(existing.poolEl, bookmark, bucket);
             kairosPerf.count("render:content");
           }

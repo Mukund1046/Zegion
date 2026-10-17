@@ -17,7 +17,7 @@
 
 **Zegion** is a local-first browser for your X (Twitter) bookmarks. It renders bookmarks in a fluid, keyboard-driven interface with Media and Cards layouts, folder/category/author/domain filtering, full-text search with tag prefixes, a spring-animated lightbox, and dark mode — all running entirely on your machine.
 
-Bookmarks are synced via [fieldtheory-cli](https://github.com/afar1/fieldtheory-cli) and optionally classified by category and linked domain using its regex or LLM engine.
+Bookmarks are synced and classified through the locally installed [fieldtheory-cli](https://github.com/afar1/fieldtheory-cli). Classification uses Field Theory's authenticated Codex or Claude CLI and commits category/domain results directly to Field Theory's local database.
 
 ---
 
@@ -65,9 +65,8 @@ Bookmarks are synced via [fieldtheory-cli](https://github.com/afar1/fieldtheory-
 ## 📋 Requirements
 
 - Windows, macOS, or Linux
-- Node.js 20+
+- Node.js 22.5+ (Firefox cookie access on Windows uses `node:sqlite`)
 - A browser logged into `https://x.com` (for cookie extraction)
-- `fieldtheory` CLI installed globally
 
 ---
 
@@ -76,49 +75,18 @@ Bookmarks are synced via [fieldtheory-cli](https://github.com/afar1/fieldtheory-
 ```bash
 git clone <repo-url> kairos
 cd kairos
-npm install
-npm install -g fieldtheory
+npm ci
 ```
 
-### 1. Sync your bookmarks with Field Theory
+The app uses the Field Theory dependency installed in this checkout; a global CLI installation is not required.
 
-```bash
-fieldtheory sync
-```
+### 1. Configure sync authentication
 
-This downloads your X bookmarks into Field Theory's data directory as `bookmarks.jsonl`.
+Start the app, open **Sync settings** in the main menu, and choose Firefox auto-detection or Manual. Firefox must be logged into `x.com` on this computer. Manual mode accepts raw cookie values or `ct0=...` and `auth_token=...` inputs.
 
-### 2. Configure cookies
+By default, settings are saved at `%USERPROFILE%\\.ft-bookmarks\\cookies-config.json`, a stable path that does not move when the database is created. On Windows, manual credentials are protected with the current user's DPAPI and are not portable to another account or computer. Each cloned machine needs its own Firefox session or its own manually entered credentials.
 
-```bash
-cp .env.example .env
-```
-
-Open `.env` and set your X cookies. Get them from browser DevTools → Cookies for `https://x.com`:
-
-```env
-X_CT0=your_ct0_here
-X_AUTH_TOKEN=your_auth_token_here
-X_API_KEY=your_api_key_here
-```
-
-### 3. Sync bookmark folders (optional)
-
-```bash
-node lib/sync-folders.js
-```
-
-Fetches your X bookmark folders and writes `folders-data.json`. If you don't use folders, skip this step.
-
-### 4. Export for the viewer
-
-```bash
-node lib/export-bookmarks.js
-```
-
-Reads `bookmarks.jsonl`, merges folder data and fieldtheory classification/domain data, and writes `bookmarks-data.json`.
-
-### 5. Start the viewer
+### 2. Start the viewer
 
 ```bash
 npm run dev
@@ -135,10 +103,9 @@ Open **http://localhost:3001** in your browser.
 | `npm run dev` | Start the Next.js dev server on port 3001 |
 | `npm run build` | Production build |
 | `npm start` | Start the production server on port 3001 |
-| `node lib/sync-folders.js` | Fetch folder metadata from X using `X_CT0` and `X_AUTH_TOKEN` |
-| `node lib/export-bookmarks.js` | Build `bookmarks-data.json` from `bookmarks.jsonl` and optional folder/classification data |
-| `node node_modules/fieldtheory/bin/ft.mjs classify --engine codex` | Run category classification |
-| `node node_modules/fieldtheory/bin/ft.mjs classify-domains --engine codex` | Run domain classification |
+| `npm test` | Run unit, architecture-freeze, and workflow tests |
+| `npm run lint` | Run TypeScript checks |
+| `node node_modules/fieldtheory/bin/ft.mjs sync --browser firefox` | Optional direct CLI sync diagnostic |
 
 ---
 
@@ -236,26 +203,9 @@ tailscale up   # add both machines to the same tailnet
 
 ## 🧠 Classification
 
-Field Theory powers category and linked-domain classification. On Windows, avoid plain `ft` in PowerShell because it conflicts with the built-in `Format-Table` alias. Use `npx ft`, `fieldtheory`, `ft.cmd`, or the local Node entrypoint.
+Use **Classify** from the main menu to run Field Theory's native `ft classify` command in the background. It classifies categories and domains using the Field Theory engine preference (Codex or Claude) and commits completed batches directly to its local database; interrupted or failed runs can therefore leave earlier batches committed. The viewer export is refreshed by Field Theory after classification. On Windows, the installed Field Theory Codex launcher patch described in `AGENTS.md` must be present. Optionally set `FT_CLASSIFY_ENGINE=codex` or `FT_CLASSIFY_ENGINE=claude` to select an engine for app-launched runs; otherwise Field Theory uses its saved preference/normal engine resolution. **Classification history** retains older staged-provider records as read-only history. The experimental provider service and frozen evaluation artifacts remain in `lib/classify/` but are no longer used by the app's Classify action.
 
-Recommended local workflow from this app directory:
-
-```powershell
-node node_modules\fieldtheory\bin\ft.mjs classify --engine codex
-node node_modules\fieldtheory\bin\ft.mjs classify-domains --engine codex
-node lib\export-bookmarks.js
-```
-
-The local Field Theory install is patched for Windows so the Codex engine launches through the npm-installed Codex entrypoint instead of spawning the extensionless `codex` shim directly. Without that patch, Node can fail with `spawnSync codex EPERM` even when `codex --version` works in PowerShell.
-
-If dependencies are reinstalled and the error returns, patch `node_modules\fieldtheory\dist\engine.js` so the Codex engine uses:
-
-```text
-bin: process.execPath
-args prefix: C:\Users\hp\AppData\Roaming\npm\node_modules\@openai\codex\bin\codex.js
-```
-
-Then rerun the workflow above and verify `data\output\bookmarks-data.json` with:
+After a manual sync setup saved in an older checkout, restart the app once to migrate its settings to the stable per-user path. To manually inspect exported categories:
 
 ```powershell
 node -e "const d=require('./data/output/bookmarks-data.json'); const cats={}; d.bookmarks.forEach(b=>{const c=b.category||'unclassified'; cats[c]=(cats[c]||0)+1}); console.log('Categories:', cats)"
@@ -316,16 +266,19 @@ The following state is saved to `localStorage` under key `kairos_state` and rest
 ## 🔧 Troubleshooting
 
 ### `Missing X_CT0` or `Missing X_AUTH_TOKEN`
-Your `.env` is missing one or both values.
+Open **Sync settings** and choose Firefox Auto or Manual. Manual accepts raw cookie values and values prefixed with `ct0=` / `auth_token=`. Re-enter expired cookies; the app never returns saved values through the API.
 
 ### `403` / `401` during folder sync
-Cookies are stale, swapped, or X logged you out. Re-copy from browser DevTools.
+Cookies are stale, swapped, or X logged you out. In Auto/Firefox mode, sign into `x.com` in Firefox on this machine. In Manual mode, re-copy both values from browser DevTools.
 
 ### `Found 0 folders`
 Either your account doesn't use bookmark folders, or X's GraphQL response shape changed.
 
 ### `Bookmarks JSONL not found`
-Set `FT_DATA_DIR` or `X_BOOKMARKS_JSONL` in `.env` pointing to your fieldtheory bookmarks location.
+Set `FT_DATA_DIR` or `X_BOOKMARKS_JSONL` in your local `.env` pointing to the Field Theory bookmarks location. `FT_DATA_DIR` also anchors the settings file; it must be the same on subsequent launches.
+
+### Firefox auto sync cannot read cookies
+Sign into X in Firefox and retry. Field Theory owns Firefox profile discovery; if its cookie database is locked or inaccessible, close Firefox and retry. Zegion does not silently switch auth modes.
 
 ### `Unexpected token... Internal Server...` on Sync / Re-index
 The server returned an HTML error page instead of JSON, usually because the job timed out or the API endpoint crashed. Check the terminal output for the full stack trace. Make sure the Field Theory CLI is installed and the scripts in `lib/` have executable permissions.

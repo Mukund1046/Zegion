@@ -1,0 +1,305 @@
+{
+  "modelVersion": "centroids-feedback-v1-2026-09-29",
+  "labelSet": [
+    "career",
+    "commerce",
+    "design",
+    "education",
+    "launch",
+    "opinion",
+    "research",
+    "technique",
+    "tool"
+  ],
+  "trainingDatasetVersion": "dataset-benchmark-v1.json (audited dev) + reviewed resolutions",
+  "labelSource": "gold-audited + zen-validated (weighted)",
+  "goldWeight": 1,
+  "zenWeight": 0.5,
+  "temporalFilter": {
+    "postedAfter": "2026-02-07T09:52:44.000Z",
+    "postedBefore": null,
+    "dateSkipped": 79
+  },
+  "thresholds": null,
+  "embeddingModel": "Xenova/all-MiniLM-L6-v2",
+  "taxonomyVersion": "experimental-001",
+  "normalizationVersion": "v0-raw",
+  "counts": {
+    "technique": 4,
+    "launch": 8,
+    "opinion": 13,
+    "tool": 7,
+    "design": 12,
+    "commerce": 1,
+    "career": 1,
+    "education": 2,
+    "research": 1
+  },
+  "trainIds": {
+    "technique": [
+      {
+        "id": "2028581088377950481",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2037526840584360417",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2041238692656783685",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2068252466903478392",
+        "source": "gold",
+        "weight": 1
+      }
+    ],
+    "launch": [
+      {
+        "id": "2044882359565312468",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2036078689754992886",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2066534707496444317",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2026437523036090525",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2036485780961669214",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2046584943367586172",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2056510383935172798",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2068010372703916292",
+        "source": "gold",
+        "weight": 1
+      }
+    ],
+    "opinion": [
+      {
+        "id": "2057507603278684307",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2064843096496415075",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2021716869556912271",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2039089908657127510",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2057292813935722905",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2066160123953958947",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2057450976827572508",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2037209132462178678",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2049905792099254481",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2037380160698356085",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2054229984898638147",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2058363539472195878",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2034335298490871987",
+        "source": "gold",
+        "weight": 1
+      }
+    ],
+    "tool": [
+      {
+        "id": "2026358091076268096",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2045797713670033874",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2056423110401008123",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2061162886542618979",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2039091847436308747",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2040502870093750544",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2044563616385445987",
+        "source": "gold",
+        "weight": 1
+      }
+    ],
+    "design": [
+      {
+        "id": "2020073233698246967",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2032797486138474759",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2040697950888951900",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2048746231938355380",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2057342725763293464",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2038342469642010939",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2049481279369007138",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2050192347158208528",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2058446207480197532",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2059992231830864151",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2026590527467258065",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2023170020142887407",
+        "source": "gold",
+        "weight": 1
+      }
+    ],
+    "commerce": [
+      {
+        "id": "2064780133240614984",
+        "source": "gold",
+        "weight": 1
+      }
+    ],
+    "career": [
+      {
+        "id": "2044039940967936473",
+        "source": "gold",
+        "weight": 1
+      }
+    ],
+    "education": [
+      {
+        "id": "2037737465889595773",
+        "source": "gold",
+        "weight": 1
+      },
+      {
+        "id": "2038024528027406474",
+        "source": "gold",
+        "weight": 1
+      }
+    ],
+    "research": [
+      {
+        "id": "2057600008002900285",
+        "source": "gold",
+        "weight": 1
+      }
+    ]
+  },
+  "createdAt": "2026-09-29T07:56:19.228Z",
+  "note": "Raw Zen output never accepted: reviewed entries require reviewer + reviewedAt. Promotion only via eval/promote.mjs."
+}

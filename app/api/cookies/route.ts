@@ -6,6 +6,7 @@ import {
 } from "@/lib/cookie-config";
 import { requireLocalOrApiKey, sanitizeError } from "@/lib/api-auth";
 import { z } from "zod";
+import { normalizeManualCookies } from "@/lib/cookie-input";
 
 const cookieConfigSchema = z
   .object({
@@ -32,16 +33,20 @@ export async function GET(request: Request) {
   const auth = requireLocalOrApiKey(request);
   if (auth) return auth;
 
-  const config = readCookieConfig();
-  const mode = describeCookieMode(config);
-  return NextResponse.json({
-    config: {
-      source: config.source,
-      browser: config.browser || null,
-      hasCookies: Boolean(config.ct0 && config.authToken),
-    },
-    cookieMode: mode,
-  });
+  try {
+    const config = readCookieConfig();
+    const mode = describeCookieMode(config);
+    return NextResponse.json({
+      config: {
+        source: config.source,
+        browser: config.browser || null,
+        hasCookies: Boolean(config.ct0 && config.authToken),
+      },
+      cookieMode: mode,
+    });
+  } catch (error) {
+    return NextResponse.json({ error: sanitizeError(error) }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request) {
@@ -60,11 +65,23 @@ export async function POST(request: Request) {
 
     const { source, browser, ct0, authToken } = parsed.data;
 
+    let manualCredentials: { ct0: string; authToken: string } | undefined;
+    if (source === "manual") {
+      try {
+        manualCredentials = normalizeManualCookies(ct0 || "", authToken || "");
+      } catch (error) {
+        return NextResponse.json(
+          { error: error instanceof Error ? error.message : "Invalid cookie value" },
+          { status: 400 }
+        );
+      }
+    }
+
     const next = {
       source,
       browser: source === "auto" ? browser || "firefox" : undefined,
-      ct0: source === "manual" ? ct0 : undefined,
-      authToken: source === "manual" ? authToken : undefined,
+      ct0: manualCredentials?.ct0,
+      authToken: manualCredentials?.authToken,
     };
 
     const saved = writeCookieConfig(next);

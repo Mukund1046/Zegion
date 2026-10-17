@@ -8,7 +8,7 @@
 ## Authentication
 
 - No user-facing auth flow. X authentication is **browser-derived** (Field Theory auto) or **manual paste** of cookies into Sync Settings.
-- Cookies are read by child processes from env; the browser profile is read by Field Theory locally.
+- Cookies are read locally by Field Theory; browser-derived credentials remain on the machine where the browser profile exists.
 
 ## Authorization
 
@@ -19,19 +19,20 @@
 
 ## Credential handling
 
-- `X_CT0` / `X_AUTH_TOKEN` live in `.env` (git-ignored) or `cookies-config.json` (manual mode, stored next to the JSONL dir).
-- They are injected into spawned child processes via `env` only — never on the command line, never logged.
+- New manual credentials are stored in the stable per-user `cookies-config.json` location. On Windows, values are protected with the current user's DPAPI; on other platforms the containing directory and file are restricted to the owner, without encryption.
+- Legacy plaintext settings files and `.env` cookie values are copied into the stable protected settings when possible; original sources are intentionally retained as recovery copies and should be cleaned up manually after confirming the new settings work.
+- Manual sync values are sent to the local Field Theory wrapper via stdin, never command-line arguments. The folder helper also receives credentials through stdin. No secrets are returned from APIs or included in application error messages.
 - `GET /api/cookies` returns only a boolean `hasCookies` + source/browser/mode — never the cookie values.
 
 ## Encryption
 
-- At rest: **no** encryption of stored data or cookies. This is an accepted local-first tradeoff. Cookies are protected only by OS file permissions and the git-ignore policy.
+- At rest: Windows manual credentials use DPAPI user-scope protection. DPAPI ciphertext cannot be moved to another machine/account; users must configure each clone with that machine's local Firefox session or new manual credentials. Non-Windows config values are plaintext under owner-only permissions; OS keychain integration is a remaining hardening opportunity.
 - In transit: dev server is HTTP (LAN). For remote access use a tunnel (HTTPS) — Cloudflare Tunnel / ngrok / Tailscale, or set `X_API_KEY` for keyed access.
 
 ## Local storage
 
 - `localStorage` keys: `kairos_state` (viewer prefs), `kairos-spatial-settle` (DialKit tune). No secrets stored client-side.
-- Disk: `data/`, `.env`, `cookies-config.json`, `bookmarks-meta.json` — all git-ignored.
+- Disk: `data/`, `.env`, generated `cookies-config.json`, bookmark exports, and classifier run/review ledgers are local runtime data and must remain untracked.
 
 ## Secrets & git policy
 

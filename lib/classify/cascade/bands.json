@@ -1,0 +1,97 @@
+{
+  "version": "v1",
+  "generatedAt": "2026-09-28T13:02:18.440Z",
+  "source": "dev-only local-v2 margins on dataset-benchmark-v1.json (holdout excluded by assertion)",
+  "targetPrecision": 0.85,
+  "minClassSupport": 8,
+  "minAbove": 5,
+  "fallback": "arbitration",
+  "classes": {
+    "technique": {
+      "mode": "banded",
+      "highAt": 0.03440000000000004,
+      "highPrecision": 0.9166666666666666,
+      "highN": 12,
+      "abstainBelow": 0.06109999999999999,
+      "abstainPrecision": 0.4,
+      "abstainN": 5,
+      "support": 15,
+      "target": 0.85
+    },
+    "launch": {
+      "mode": "banded",
+      "highAt": 0.09370000000000006,
+      "highPrecision": 1,
+      "highN": 5,
+      "abstainBelow": 0.04359999999999997,
+      "abstainPrecision": 0.45454545454545453,
+      "abstainN": 11,
+      "support": 22,
+      "target": 0.85
+    },
+    "opinion": {
+      "mode": "arbitration-only",
+      "highAt": null,
+      "highPrecision": null,
+      "highN": 0,
+      "abstainBelow": 0.10660000000000003,
+      "abstainPrecision": 0.48148148148148145,
+      "abstainN": 27,
+      "support": 36,
+      "target": 0.85
+    },
+    "tool": {
+      "mode": "banded",
+      "highAt": 0.05569999999999997,
+      "highPrecision": 0.9,
+      "highN": 10,
+      "abstainBelow": 0.13680000000000003,
+      "abstainPrecision": 0.45454545454545453,
+      "abstainN": 11,
+      "support": 15,
+      "target": 0.85
+    },
+    "design": {
+      "mode": "banded",
+      "highAt": 0.22739999999999994,
+      "highPrecision": 1,
+      "highN": 5,
+      "abstainBelow": 0.25989999999999996,
+      "abstainPrecision": 0.3902439024390244,
+      "abstainN": 41,
+      "support": 42,
+      "target": 0.85
+    },
+    "education": {
+      "mode": "arbitration-only",
+      "reason": "support 5 < 8: no threshold invented",
+      "support": 5
+    },
+    "commerce": {
+      "mode": "banded",
+      "highAt": 0.05680000000000002,
+      "highPrecision": 0.875,
+      "highN": 8,
+      "abstainBelow": 0.1713,
+      "abstainPrecision": 0.45454545454545453,
+      "abstainN": 11,
+      "support": 13,
+      "target": 0.85
+    },
+    "career": {
+      "mode": "arbitration-only",
+      "reason": "support 7 < 8: no threshold invented",
+      "support": 7
+    },
+    "security": {
+      "mode": "arbitration-only",
+      "reason": "support 2 < 8: no threshold invented",
+      "support": 2
+    },
+    "research": {
+      "mode": "arbitration-only",
+      "reason": "support 1 < 8: no threshold invented",
+      "support": 1
+    }
+  }
+}

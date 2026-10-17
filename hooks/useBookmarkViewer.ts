@@ -1,10 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { RefObject } from "react";
+import type { CameraSnapshot, SpatialCameraApi } from "@/hooks/useSpatialFeed";
 import { animate } from "motion";
 import type { AnimationOptions, DOMKeyframesDefinition } from "motion";
 import { iconPath, sortIcons } from "@/lib/icons";
 import { kairosPerf } from "@/lib/perf";
+import {
+  beginImageAssignment,
+  invalidateImageAssignment,
+  isCurrentImageAssignment,
+} from "@/lib/image-load-guard.mjs";
 import {
   advanceGeometry,
   advanceSpring,
@@ -175,7 +182,7 @@ function renderScrubberPreviewCardImpl(marker: ScrubberMarkerData) {
     `;
 }
 
-export function useBookmarkViewer() {
+export function useBookmarkViewer(cameraApiRef?: RefObject<SpatialCameraApi | null>) {
   const feedShellRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -202,6 +209,17 @@ export function useBookmarkViewer() {
   const [activeFacetValue, setActiveFacetValue] = useState("All bookmarks");
   const [displayBookmarks, setDisplayBookmarks] = useState<Bookmark[]>([]);
   const [darkMode, setDarkMode] = useState(false);
+  /** Pre-entry state for Back navigation. Written once on the fully-inactive
+   *  → filtered transition (text query or facet entry); refinements while
+   *  active keep the original so Back undoes the entry, not the last tweak.
+   *  Memory-only: after a reload there is no entry and Back degrades to a
+   *  plain clear. Folder/sort/view stay outside Back scope by design. */
+  const preEntryRef = useRef<{
+    query: string;
+    facetType: FacetType;
+    facetValue: string;
+    camera: CameraSnapshot | null;
+  } | null>(null);
 
   const [syncStatusText, setSyncStatusText] = useState("Local cache ready");
   const [syncStatusTone, setSyncStatusTone] = useState<
@@ -209,6 +227,11 @@ export function useBookmarkViewer() {
   >("idle");
   const [syncBusy, setSyncBusy] = useState(false);
   const [reindexBusy, setReindexBusy] = useState(false);
+  const [classifyBusy, setClassifyBusy] = useState(false);
+  const [classifyAvailable, setClassifyAvailable] = useState<{ available: boolean; hint: string | null }>({
+    available: true,
+    hint: null,
+  });
   const [scrubberVisible, setScrubberVisible] = useState(false);
   const [scrubberActive, setScrubberActive] = useState(false);
   const [scrubberMarkers, setScrubberMarkers] = useState<ScrubberMarkerData[]>([]);
@@ -371,20 +394,41 @@ export function useBookmarkViewer() {
                 )
               : item.h;
           mediaWrap.style.height = `${imageHeight}px`;
-          mediaWrap.classList.remove("loading-image");
-
           const source = twitterImageUrl(
             bookmark.images[0].url,
             view === "card" ? "large" : "medium"
           );
-          if (image.src !== source) {
+          const generation = beginImageAssignment(image);
+          image.alt = bookmark.text.substring(0, 80);
+          const isCurrent = () =>
+            isCurrentImageAssignment(image, generation, source) &&
+            engineRef.current.elToBookmark.get(element) === bookmark;
+          image.onload = () => {
+            if (!isCurrent()) return;
+            mediaWrap.classList.remove("loading-image");
+          };
+          image.onerror = () => {
+            if (!isCurrent()) return;
+            mediaWrap.classList.remove("loading-image");
+          };
+
+          if (image.getAttribute("src") !== source) {
             mediaWrap.classList.add("loading-image");
-            image.onload = () => mediaWrap.classList.remove("loading-image");
-            image.onerror = () => mediaWrap.classList.remove("loading-image");
             image.src = source;
-            image.alt = bookmark.text.substring(0, 80);
+          } else if (image.complete) {
+            // A pooled element may already hold this URL. Defer the completion
+            // check until its bookmark ownership has been installed below.
+            queueMicrotask(() => {
+              if (image.naturalWidth > 0) image.onload?.(new Event("load"));
+              else image.onerror?.(new Event("error"));
+            });
+          } else {
+            mediaWrap.classList.add("loading-image");
           }
         } else if (image) {
+          invalidateImageAssignment(image);
+          image.onload = null;
+          image.onerror = null;
           image.removeAttribute("src");
           image.alt = "";
           if (mediaWrap) mediaWrap.classList.remove("loading-image");
@@ -1214,7 +1258,7 @@ export function useBookmarkViewer() {
   const focus = useSpatialFocus(focusEngineRef, feedShellRef as unknown as React.RefObject<HTMLElement | null>, focusWorldRef, focusRendererRef, focusBookmarkMapRef as unknown as React.RefObject<Map<string, BookmarkForRender>>);
 
   const openLightbox = useCallback(
-    (element: HTMLDivElement, bookmark: Bookmark) => {
+    (element: HTMLDivElement, bookmark: Bookmark, resolveBookmarkRect?: (id: string) => DOMRect | null) => {
       // Prefer ripple if enabled and has image — keep window.open fallback for text-only
       if (!bookmark.images || bookmark.images.length === 0) {
         window.open(bookmark.url, "_blank", "noopener");
@@ -1230,7 +1274,7 @@ export function useBookmarkViewer() {
         };
         // Ensure the focus map has this bookmark (for direct calls)
         focusBookmarkMapRef.current.set(bookmark.id, renderBookmark);
-        focus.open(bookmark.id, element);
+        focus.open(bookmark.id, element, resolveBookmarkRect);
         // If focus didn't activate (disabled via flag or not on /spatial), fall back to no-op
         // Keep lightbox code as fallback only if ripple is disabled
         if (focus.isActiveRef.current) return;
@@ -1421,6 +1465,12 @@ export function useBookmarkViewer() {
               : "Local cache ready"
         );
         setSyncStatusTone(payload.running ? "working" : "idle");
+        if (payload.classify && typeof payload.classify.available === "boolean") {
+          setClassifyAvailable({
+            available: payload.classify.available,
+            hint: typeof payload.classify.hint === "string" ? payload.classify.hint : null,
+          });
+        }
       }
     } catch (e) {
       console.warn("Failed to poll sync status", e);
@@ -1428,29 +1478,61 @@ export function useBookmarkViewer() {
   }, []);
 
   const runServerAction = useCallback(
-    async (endpoint: string, pendingLabel: string, successLabel: string, isSync: boolean) => {
+    async (
+      endpoint: string,
+      pendingLabel: string,
+      successLabel: string,
+      busy: "sync" | "reindex" | "classify",
+      options?: { reload?: boolean; successFromPayload?: (payload: any) => string }
+    ) => {
       setSyncStatusText(pendingLabel);
       setSyncStatusTone("working");
-      if (isSync) setSyncBusy(true);
-      else setReindexBusy(true);
+      if (busy === "sync") setSyncBusy(true);
+      else if (busy === "reindex") setReindexBusy(true);
+      else setClassifyBusy(true);
 
       try {
         const response = await apiFetch(endpoint, { method: "POST" });
-        const payload = await response.json();
+        let payload = await response.json();
         if (!response.ok) {
           throw new Error(payload.error || "Action failed");
         }
-        await reloadBookmarks();
+        if (busy === "classify" && typeof payload.runId === "string") {
+          const runId = payload.runId as string;
+          while (true) {
+            await new Promise((resolve) => setTimeout(resolve, 1250));
+            const statusResponse = await apiFetch(`/api/classify?runId=${encodeURIComponent(runId)}`);
+            const status = await statusResponse.json();
+            if (!statusResponse.ok) throw new Error(status.error || "Could not read classification progress.");
+            if (status.state === "failed") throw new Error(status.error || "Classification failed.");
+            if (status.state === "complete") {
+              payload = status;
+              break;
+            }
+            const completed = Number(status.progress?.completed || 0);
+            const total = Number(status.progress?.total || 0);
+            const phase = status.phase === "domains" ? "domains" : "categories";
+            setSyncStatusText(total > 0
+              ? `Field Theory · ${phase} ${completed}/${total}`
+              : "Field Theory · starting classifier");
+          }
+        }
+        if (options?.reload !== false) await reloadBookmarks();
         setSyncStatusText(
-          payload.warning ? `${successLabel} • folder refresh needs review` : successLabel
+          options?.successFromPayload
+            ? options.successFromPayload(payload)
+            : payload.warning
+              ? `${successLabel} • folder refresh needs review`
+              : successLabel
         );
         setSyncStatusTone("success");
       } catch (error) {
         setSyncStatusText(error instanceof Error ? error.message : "Action failed");
         setSyncStatusTone("error");
       } finally {
-        if (isSync) setSyncBusy(false);
-        else setReindexBusy(false);
+        if (busy === "sync") setSyncBusy(false);
+        else if (busy === "reindex") setReindexBusy(false);
+        else setClassifyBusy(false);
       }
     },
     [reloadBookmarks]
@@ -1621,6 +1703,17 @@ export function useBookmarkViewer() {
   const applyFacet = useCallback(
     (type: FacetType, value: string) => {
       if (activeFacetType === type && activeFacetValue === value) return;
+      // Facet entry (@, #, domain:, sites:) from the fully-inactive state
+      // snapshots the pre-entry context exactly like a text query does, so
+      // Back can undo the entry and restore the previous camera.
+      if (!activeSearch.trim() && activeFacetType === "all" && !preEntryRef.current) {
+        preEntryRef.current = {
+          query: activeSearch,
+          facetType: activeFacetType,
+          facetValue: activeFacetValue,
+          camera: cameraApiRef?.current?.snapshotCamera() ?? null,
+        };
+      }
       setActiveFacetType(type);
       setActiveFacetValue(value);
       viewportRef.current?.scrollTo({ top: 0, behavior: "smooth" });
@@ -1645,6 +1738,7 @@ export function useBookmarkViewer() {
       activeView,
       allBookmarks,
       refreshDisplay,
+      cameraApiRef,
     ]
   );
 
@@ -2276,6 +2370,8 @@ export function useBookmarkViewer() {
       syncStatusTone,
       syncBusy,
       reindexBusy,
+      classifyBusy,
+      classifyAvailable,
       scrubberVisible,
       scrubberActive,
       scrubberMarkers,
@@ -2304,7 +2400,19 @@ export function useBookmarkViewer() {
       searchLabel,
     },
     actions: {
+      reloadBookmarks,
       setActiveSearch: (value: string, instant?: boolean) => {
+        // Snapshot the pre-entry state once, on the fully-inactive →
+        // filtered transition. Refinements while filtered keep the original
+        // snapshot so Back undoes the entry, not the last tweak.
+        if (value.trim() && !activeSearch.trim() && activeFacetType === "all" && !preEntryRef.current) {
+          preEntryRef.current = {
+            query: activeSearch,
+            facetType: activeFacetType,
+            facetValue: activeFacetValue,
+            camera: cameraApiRef?.current?.snapshotCamera() ?? null,
+          };
+        }
         setActiveSearch(value);
         engineRef.current.profileTrigger = "search";
         refreshDisplay(
@@ -2332,7 +2440,35 @@ export function useBookmarkViewer() {
           false
         );
       },
+      // Back navigation: undo the filtered entry (text query and/or facet),
+      // restoring the captured pre-entry query, facet, and camera. Folder,
+      // sort, and view were never part of the entry and stay untouched.
+      // Without an entry (e.g. reloaded while filtered) this is a plain
+      // query clear — the feed's default reset behavior is unchanged.
+      goBackToFeed: () => {
+        const entry = preEntryRef.current;
+        preEntryRef.current = null;
+        const query = entry?.query ?? "";
+        const facetType = entry?.facetType ?? activeFacetType;
+        const facetValue = entry?.facetValue ?? activeFacetValue;
+        setActiveSearch(query);
+        setActiveFacetType(facetType);
+        setActiveFacetValue(facetValue);
+        engineRef.current.profileTrigger = "search";
+        refreshDisplay(
+          allBookmarks,
+          activeFolder,
+          query,
+          facetType,
+          facetValue,
+          activeSort,
+          activeView,
+          false
+        );
+        if (entry?.camera) cameraApiRef?.current?.requestRestore(entry.camera);
+      },
       resetFilters: () => {
+        preEntryRef.current = null;
         setActiveSearch("");
         setActiveFacetType("all");
         setActiveFacetValue("All bookmarks");

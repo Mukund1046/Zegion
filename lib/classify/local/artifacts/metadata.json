@@ -1,0 +1,36 @@
+{
+  "modelVersion": "centroids-v1-2026-09-26",
+  "labelSet": [
+    "career",
+    "commerce",
+    "design",
+    "education",
+    "launch",
+    "opinion",
+    "research",
+    "security",
+    "technique",
+    "tool"
+  ],
+  "trainingDatasetVersion": "ft-list(limit=2000)",
+  "thresholds": null,
+  "embeddingModel": "Xenova/all-MiniLM-L6-v2",
+  "counts": {
+    "technique": 150,
+    "tool": 150,
+    "launch": 150,
+    "design": 150,
+    "opinion": 71,
+    "commerce": 31,
+    "career": 14,
+    "security": 3,
+    "education": 1,
+    "research": 7
+  },
+  "createdAt": "2026-09-26T06:49:36.535Z",
+  "labelSource": "silver-unvalidated",
+  "status": "demoted-provisional",
+  "taxonomyVersion": "pre-experimental (v1-head-plus-other)",
+  "normalizationVersion": "v0-raw",
+  "note": "DEMOTED: built directly on unvalidated Codex silver labels — must not seed production decisions or be treated as truth. Retained only as a Phase-0 reference point. Rebuild from the audited gold slice (dataset v2) as v2 before any calibration or cascade work."
+}

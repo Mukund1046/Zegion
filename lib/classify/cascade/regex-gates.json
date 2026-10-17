@@ -1,0 +1,101 @@
+{
+  "version": "v1",
+  "generatedAt": "2026-09-28T13:00:57.021Z",
+  "source": "gold benchmark per-label precision (harness-regex.json)",
+  "promotionRule": "precision === 1.0 AND predicted >= 5",
+  "terminal": [],
+  "measured": [
+    {
+      "label": "other",
+      "precision": null,
+      "recall": 0,
+      "predicted": 0,
+      "support": 49
+    },
+    {
+      "label": "unknown",
+      "precision": null,
+      "recall": 0,
+      "predicted": 0,
+      "support": 41
+    },
+    {
+      "label": "opinion",
+      "precision": 1,
+      "recall": 0.030303030303030304,
+      "predicted": 1,
+      "support": 33
+    },
+    {
+      "label": "design",
+      "precision": null,
+      "recall": 0,
+      "predicted": 0,
+      "support": 26
+    },
+    {
+      "label": "launch",
+      "precision": 0.8,
+      "recall": 0.2222222222222222,
+      "predicted": 5,
+      "support": 18
+    },
+    {
+      "label": "tool",
+      "precision": 0.7692307692307693,
+      "recall": 0.5555555555555556,
+      "predicted": 13,
+      "support": 18
+    },
+    {
+      "label": "technique",
+      "precision": 0.2,
+      "recall": 0.058823529411764705,
+      "predicted": 5,
+      "support": 17
+    },
+    {
+      "label": "commerce",
+      "precision": null,
+      "recall": 0,
+      "predicted": 0,
+      "support": 8
+    },
+    {
+      "label": "career",
+      "precision": null,
+      "recall": 0,
+      "predicted": 0,
+      "support": 7
+    },
+    {
+      "label": "education",
+      "precision": null,
+      "recall": 0,
+      "predicted": 0,
+      "support": 4
+    },
+    {
+      "label": "security",
+      "precision": 1,
+      "recall": 0.6666666666666666,
+      "predicted": 2,
+      "support": 3
+    },
+    {
+      "label": "uncertain",
+      "precision": null,
+      "recall": 0,
+      "predicted": 0,
+      "support": 1
+    },
+    {
+      "label": "research",
+      "precision": 0,
+      "recall": 0,
+      "predicted": 0,
+      "support": 1
+    }
+  ],
+  "note": "No label met the promotion rule: regex stays pure evidence in cascade v1."
+}

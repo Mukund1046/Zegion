@@ -73,6 +73,8 @@ export default function SpatialViewer() {
       </footer>
       <SpatialFocusDetails
         bookmark={focus.focusState.bookmark}
+        bookmarkIds={focus.getBookmarkIds()}
+        onNavigate={focus.navigateToBookmark}
         phase={focus.focusState.phase}
         isActive={focus.focusState.isActive}
         isAnimating={focus.focusState.isAnimating}

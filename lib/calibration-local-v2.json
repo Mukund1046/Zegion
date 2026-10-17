@@ -1,0 +1,715 @@
+{
+  "generatedAt": "2026-09-28T12:40:20.164Z",
+  "dataset": "dataset-benchmark-v1.json",
+  "rows": 226,
+  "dev": {
+    "name": "dev",
+    "n": 158,
+    "accuracy": 0.569620253164557,
+    "topScoreMeanCorrect": 0.5345233333333336,
+    "topScoreMeanIncorrect": 0.42676911764705877,
+    "marginMeanCorrect": 0.15127000000000007,
+    "marginMeanIncorrect": 0.042758823529411766,
+    "scoreBins": [
+      {
+        "lo": 0.2136,
+        "hi": 0.29224,
+        "n": 7,
+        "correct": 0,
+        "precision": 0
+      },
+      {
+        "lo": 0.29224,
+        "hi": 0.37088,
+        "n": 19,
+        "correct": 7,
+        "precision": 0.3684210526315789
+      },
+      {
+        "lo": 0.37088,
+        "hi": 0.44952000000000003,
+        "n": 31,
+        "correct": 12,
+        "precision": 0.3870967741935484
+      },
+      {
+        "lo": 0.44952000000000003,
+        "hi": 0.52816,
+        "n": 45,
+        "correct": 26,
+        "precision": 0.5777777777777777
+      },
+      {
+        "lo": 0.52816,
+        "hi": 0.6068,
+        "n": 33,
+        "correct": 23,
+        "precision": 0.696969696969697
+      },
+      {
+        "lo": 0.6068,
+        "hi": 0.68544,
+        "n": 18,
+        "correct": 18,
+        "precision": 1
+      },
+      {
+        "lo": 0.68544,
+        "hi": 0.76408,
+        "n": 2,
+        "correct": 1,
+        "precision": 0.5
+      },
+      {
+        "lo": 0.76408,
+        "hi": 0.84272,
+        "n": 2,
+        "correct": 2,
+        "precision": 1
+      },
+      {
+        "lo": 0.84272,
+        "hi": 0.9213600000000001,
+        "n": 0,
+        "correct": 0,
+        "precision": null
+      },
+      {
+        "lo": 0.9213600000000001,
+        "hi": 1,
+        "n": 1,
+        "correct": 1,
+        "precision": 1
+      }
+    ],
+    "scoreMonotonic": {
+      "monotonic": false,
+      "violations": 1,
+      "bins": 9
+    },
+    "marginBins": [
+      {
+        "lo": 0.00029999999999996696,
+        "hi": 0.10080999999999998,
+        "n": 95,
+        "correct": 32,
+        "precision": 0.3368421052631579
+      },
+      {
+        "lo": 0.10080999999999998,
+        "hi": 0.20132,
+        "n": 42,
+        "correct": 38,
+        "precision": 0.9047619047619048
+      },
+      {
+        "lo": 0.20132,
+        "hi": 0.30183,
+        "n": 15,
+        "correct": 14,
+        "precision": 0.9333333333333333
+      },
+      {
+        "lo": 0.30183,
+        "hi": 0.40234000000000003,
+        "n": 2,
+        "correct": 2,
+        "precision": 1
+      },
+      {
+        "lo": 0.40234000000000003,
+        "hi": 0.50285,
+        "n": 3,
+        "correct": 3,
+        "precision": 1
+      },
+      {
+        "lo": 0.50285,
+        "hi": 0.60336,
+        "n": 0,
+        "correct": 0,
+        "precision": null
+      },
+      {
+        "lo": 0.60336,
+        "hi": 0.70387,
+        "n": 0,
+        "correct": 0,
+        "precision": null
+      },
+      {
+        "lo": 0.70387,
+        "hi": 0.8043800000000001,
+        "n": 0,
+        "correct": 0,
+        "precision": null
+      },
+      {
+        "lo": 0.8043800000000001,
+        "hi": 0.9048900000000001,
+        "n": 0,
+        "correct": 0,
+        "precision": null
+      },
+      {
+        "lo": 0.9048900000000001,
+        "hi": 1.0054,
+        "n": 1,
+        "correct": 1,
+        "precision": 1
+      }
+    ],
+    "marginMonotonic": {
+      "monotonic": true,
+      "violations": 0,
+      "bins": 6
+    },
+    "selectiveByMargin": [
+      {
+        "fraction": 0.1,
+        "coverage": 0.0949367088607595,
+        "precision": 1,
+        "accepted": 15,
+        "errors": 0
+      },
+      {
+        "fraction": 0.2,
+        "coverage": 0.1962025316455696,
+        "precision": 0.967741935483871,
+        "accepted": 31,
+        "errors": 1
+      },
+      {
+        "fraction": 0.3,
+        "coverage": 0.2974683544303797,
+        "precision": 0.9787234042553191,
+        "accepted": 47,
+        "errors": 1
+      },
+      {
+        "fraction": 0.4,
+        "coverage": 0.3987341772151899,
+        "precision": 0.9206349206349206,
+        "accepted": 63,
+        "errors": 5
+      },
+      {
+        "fraction": 0.5,
+        "coverage": 0.5,
+        "precision": 0.8607594936708861,
+        "accepted": 79,
+        "errors": 11
+      },
+      {
+        "fraction": 0.6,
+        "coverage": 0.5949367088607594,
+        "precision": 0.776595744680851,
+        "accepted": 94,
+        "errors": 21
+      },
+      {
+        "fraction": 0.7,
+        "coverage": 0.6962025316455697,
+        "precision": 0.7181818181818181,
+        "accepted": 110,
+        "errors": 31
+      },
+      {
+        "fraction": 0.8,
+        "coverage": 0.7974683544303798,
+        "precision": 0.6746031746031746,
+        "accepted": 126,
+        "errors": 41
+      },
+      {
+        "fraction": 0.9,
+        "coverage": 0.8987341772151899,
+        "precision": 0.6267605633802817,
+        "accepted": 142,
+        "errors": 53
+      },
+      {
+        "fraction": 1,
+        "coverage": 1,
+        "precision": 0.569620253164557,
+        "accepted": 158,
+        "errors": 68
+      }
+    ],
+    "selectiveByScore": [
+      {
+        "fraction": 0.1,
+        "coverage": 0.0949367088607595,
+        "precision": 0.9333333333333333,
+        "accepted": 15,
+        "errors": 1
+      },
+      {
+        "fraction": 0.2,
+        "coverage": 0.1962025316455696,
+        "precision": 0.8709677419354839,
+        "accepted": 31,
+        "errors": 4
+      },
+      {
+        "fraction": 0.3,
+        "coverage": 0.2974683544303797,
+        "precision": 0.8297872340425532,
+        "accepted": 47,
+        "errors": 8
+      },
+      {
+        "fraction": 0.4,
+        "coverage": 0.3987341772151899,
+        "precision": 0.8253968253968254,
+        "accepted": 63,
+        "errors": 11
+      },
+      {
+        "fraction": 0.5,
+        "coverage": 0.5,
+        "precision": 0.7974683544303798,
+        "accepted": 79,
+        "errors": 16
+      },
+      {
+        "fraction": 0.6,
+        "coverage": 0.5949367088607594,
+        "precision": 0.7446808510638298,
+        "accepted": 94,
+        "errors": 24
+      },
+      {
+        "fraction": 0.7,
+        "coverage": 0.6962025316455697,
+        "precision": 0.6909090909090909,
+        "accepted": 110,
+        "errors": 34
+      },
+      {
+        "fraction": 0.8,
+        "coverage": 0.7974683544303798,
+        "precision": 0.6428571428571429,
+        "accepted": 126,
+        "errors": 45
+      },
+      {
+        "fraction": 0.9,
+        "coverage": 0.8987341772151899,
+        "precision": 0.6126760563380281,
+        "accepted": 142,
+        "errors": 55
+      },
+      {
+        "fraction": 1,
+        "coverage": 1,
+        "precision": 0.569620253164557,
+        "accepted": 158,
+        "errors": 68
+      }
+    ],
+    "brierNaive": 0.21269473240506334
+  },
+  "holdout": {
+    "name": "holdout",
+    "n": 68,
+    "accuracy": 0.16176470588235295,
+    "topScoreMeanCorrect": 0.4274727272727273,
+    "topScoreMeanIncorrect": 0.39185964912280713,
+    "marginMeanCorrect": 0.05156363636363634,
+    "marginMeanIncorrect": 0.0343561403508772,
+    "scoreBins": [
+      {
+        "lo": 0.2107,
+        "hi": 0.24862,
+        "n": 2,
+        "correct": 0,
+        "precision": 0
+      },
+      {
+        "lo": 0.24862,
+        "hi": 0.28654,
+        "n": 7,
+        "correct": 0,
+        "precision": 0
+      },
+      {
+        "lo": 0.28654,
+        "hi": 0.32445999999999997,
+        "n": 8,
+        "correct": 3,
+        "precision": 0.375
+      },
+      {
+        "lo": 0.32445999999999997,
+        "hi": 0.36238,
+        "n": 8,
+        "correct": 0,
+        "precision": 0
+      },
+      {
+        "lo": 0.36238,
+        "hi": 0.4003,
+        "n": 9,
+        "correct": 1,
+        "precision": 0.1111111111111111
+      },
+      {
+        "lo": 0.4003,
+        "hi": 0.43822,
+        "n": 14,
+        "correct": 3,
+        "precision": 0.21428571428571427
+      },
+      {
+        "lo": 0.43822,
+        "hi": 0.47614,
+        "n": 6,
+        "correct": 0,
+        "precision": 0
+      },
+      {
+        "lo": 0.47614,
+        "hi": 0.51406,
+        "n": 6,
+        "correct": 2,
+        "precision": 0.3333333333333333
+      },
+      {
+        "lo": 0.51406,
+        "hi": 0.5519799999999999,
+        "n": 4,
+        "correct": 1,
+        "precision": 0.25
+      },
+      {
+        "lo": 0.5519799999999999,
+        "hi": 0.5899,
+        "n": 4,
+        "correct": 1,
+        "precision": 0.25
+      }
+    ],
+    "scoreMonotonic": {
+      "monotonic": false,
+      "violations": 3,
+      "bins": 10
+    },
+    "marginBins": [
+      {
+        "lo": 0.0006999999999999784,
+        "hi": 0.013259999999999977,
+        "n": 12,
+        "correct": 0,
+        "precision": 0
+      },
+      {
+        "lo": 0.013259999999999977,
+        "hi": 0.025819999999999975,
+        "n": 16,
+        "correct": 2,
+        "precision": 0.125
+      },
+      {
+        "lo": 0.025819999999999975,
+        "hi": 0.03837999999999998,
+        "n": 11,
+        "correct": 2,
+        "precision": 0.18181818181818182
+      },
+      {
+        "lo": 0.03837999999999998,
+        "hi": 0.05093999999999997,
+        "n": 10,
+        "correct": 4,
+        "precision": 0.4
+      },
+      {
+        "lo": 0.05093999999999997,
+        "hi": 0.06349999999999997,
+        "n": 7,
+        "correct": 1,
+        "precision": 0.14285714285714285
+      },
+      {
+        "lo": 0.06349999999999997,
+        "hi": 0.07605999999999997,
+        "n": 7,
+        "correct": 0,
+        "precision": 0
+      },
+      {
+        "lo": 0.07605999999999997,
+        "hi": 0.08861999999999998,
+        "n": 0,
+        "correct": 0,
+        "precision": null
+      },
+      {
+        "lo": 0.08861999999999998,
+        "hi": 0.10117999999999996,
+        "n": 3,
+        "correct": 0,
+        "precision": 0
+      },
+      {
+        "lo": 0.10117999999999996,
+        "hi": 0.11373999999999997,
+        "n": 1,
+        "correct": 1,
+        "precision": 1
+      },
+      {
+        "lo": 0.11373999999999997,
+        "hi": 0.12629999999999997,
+        "n": 1,
+        "correct": 1,
+        "precision": 1
+      }
+    ],
+    "marginMonotonic": {
+      "monotonic": false,
+      "violations": 2,
+      "bins": 9
+    },
+    "selectiveByMargin": [
+      {
+        "fraction": 0.1,
+        "coverage": 0.08823529411764706,
+        "precision": 0.3333333333333333,
+        "accepted": 6,
+        "errors": 4
+      },
+      {
+        "fraction": 0.2,
+        "coverage": 0.19117647058823528,
+        "precision": 0.15384615384615385,
+        "accepted": 13,
+        "errors": 11
+      },
+      {
+        "fraction": 0.3,
+        "coverage": 0.29411764705882354,
+        "precision": 0.2,
+        "accepted": 20,
+        "errors": 16
+      },
+      {
+        "fraction": 0.4,
+        "coverage": 0.39705882352941174,
+        "precision": 0.2222222222222222,
+        "accepted": 27,
+        "errors": 21
+      },
+      {
+        "fraction": 0.5,
+        "coverage": 0.5,
+        "precision": 0.2647058823529412,
+        "accepted": 34,
+        "errors": 25
+      },
+      {
+        "fraction": 0.6,
+        "coverage": 0.5882352941176471,
+        "precision": 0.225,
+        "accepted": 40,
+        "errors": 31
+      },
+      {
+        "fraction": 0.7,
+        "coverage": 0.6911764705882353,
+        "precision": 0.2127659574468085,
+        "accepted": 47,
+        "errors": 37
+      },
+      {
+        "fraction": 0.8,
+        "coverage": 0.7941176470588235,
+        "precision": 0.2037037037037037,
+        "accepted": 54,
+        "errors": 43
+      },
+      {
+        "fraction": 0.9,
+        "coverage": 0.8970588235294118,
+        "precision": 0.18032786885245902,
+        "accepted": 61,
+        "errors": 50
+      },
+      {
+        "fraction": 1,
+        "coverage": 1,
+        "precision": 0.16176470588235295,
+        "accepted": 68,
+        "errors": 57
+      }
+    ],
+    "selectiveByScore": [
+      {
+        "fraction": 0.1,
+        "coverage": 0.08823529411764706,
+        "precision": 0.3333333333333333,
+        "accepted": 6,
+        "errors": 4
+      },
+      {
+        "fraction": 0.2,
+        "coverage": 0.19117647058823528,
+        "precision": 0.3076923076923077,
+        "accepted": 13,
+        "errors": 9
+      },
+      {
+        "fraction": 0.3,
+        "coverage": 0.29411764705882354,
+        "precision": 0.2,
+        "accepted": 20,
+        "errors": 16
+      },
+      {
+        "fraction": 0.4,
+        "coverage": 0.39705882352941174,
+        "precision": 0.2222222222222222,
+        "accepted": 27,
+        "errors": 21
+      },
+      {
+        "fraction": 0.5,
+        "coverage": 0.5,
+        "precision": 0.20588235294117646,
+        "accepted": 34,
+        "errors": 27
+      },
+      {
+        "fraction": 0.6,
+        "coverage": 0.5882352941176471,
+        "precision": 0.2,
+        "accepted": 40,
+        "errors": 32
+      },
+      {
+        "fraction": 0.7,
+        "coverage": 0.6911764705882353,
+        "precision": 0.1702127659574468,
+        "accepted": 47,
+        "errors": 39
+      },
+      {
+        "fraction": 0.8,
+        "coverage": 0.7941176470588235,
+        "precision": 0.16666666666666666,
+        "accepted": 54,
+        "errors": 45
+      },
+      {
+        "fraction": 0.9,
+        "coverage": 0.8970588235294118,
+        "precision": 0.18032786885245902,
+        "accepted": 61,
+        "errors": 50
+      },
+      {
+        "fraction": 1,
+        "coverage": 1,
+        "precision": 0.16176470588235295,
+        "accepted": 68,
+        "errors": 57
+      }
+    ],
+    "brierNaive": 0.18990805411764705
+  },
+  "plattGlobal": {
+    "fitted": true,
+    "a": 8.472812280748514,
+    "b": -3.782489237088973,
+    "brierInSample": 0.19243705303626182,
+    "n": 158
+  },
+  "plattHoldoutBrier": 0.20789547094399327,
+  "perClassDev": [
+    {
+      "label": "other",
+      "support": 37,
+      "recall": 0,
+      "marginP50": 0.03109999999999996,
+      "marginMin": 0.0019999999999999463
+    },
+    {
+      "label": "opinion",
+      "support": 25,
+      "recall": 0.8,
+      "marginP50": 0.08799999999999997,
+      "marginMin": 0.013000000000000012
+    },
+    {
+      "label": "unknown",
+      "support": 21,
+      "recall": 0,
+      "marginP50": 0.045399999999999996,
+      "marginMin": 0.0010999999999999899
+    },
+    {
+      "label": "design",
+      "support": 18,
+      "recall": 0.9444444444444444,
+      "marginP50": 0.1422,
+      "marginMin": 0.032299999999999995
+    },
+    {
+      "label": "launch",
+      "support": 14,
+      "recall": 0.9285714285714286,
+      "marginP50": 0.07419999999999993,
+      "marginMin": 0.00029999999999996696
+    },
+    {
+      "label": "technique",
+      "support": 13,
+      "recall": 0.9230769230769231,
+      "marginP50": 0.15609999999999996,
+      "marginMin": 0.020499999999999963
+    },
+    {
+      "label": "tool",
+      "support": 11,
+      "recall": 0.8181818181818182,
+      "marginP50": 0.11140000000000005,
+      "marginMin": 0.02300000000000002
+    },
+    {
+      "label": "commerce",
+      "support": 7,
+      "recall": 1,
+      "marginP50": 0.15150000000000002,
+      "marginMin": 0.09870000000000001
+    },
+    {
+      "label": "career",
+      "support": 6,
+      "recall": 1,
+      "marginP50": 0.22479999999999994,
+      "marginMin": 0.09949999999999998
+    },
+    {
+      "label": "education",
+      "support": 3,
+      "recall": 1,
+      "marginP50": 0.24609999999999999,
+      "marginMin": 0.11519999999999997
+    },
+    {
+      "label": "security",
+      "support": 2,
+      "recall": 1,
+      "marginP50": 0.48479999999999995,
+      "marginMin": 0.4372
+    },
+    {
+      "label": "research",
+      "support": 1,
+      "recall": 1,
+      "marginP50": 1.0054,
+      "marginMin": 1.0054
+    }
+  ]
+}

@@ -788,7 +788,38 @@ export function useSpatialViewer() {
       // Don't trigger focus if the click was on a handle link inside the card
       if ((target as HTMLElement).closest("a")) return;
       event.preventDefault();
-      focus.open(bookmark.id, cardEl as HTMLDivElement);
+      focus.open(bookmark.id, cardEl as HTMLDivElement, (id) => {
+        const currentEngine = engineRef.current;
+        const viewport = viewportRef.current;
+        if (!currentEngine || !viewport) return null;
+        const index = currentEngine.bookmarks.findIndex((entry) => entry.bookmarkId === id);
+        const item = index >= 0 ? currentEngine.layoutItems[index] : undefined;
+        if (!item) return null;
+        const zoom = currentEngine.camera.zoom;
+        const screenX = item.x * zoom - currentEngine.camera.x;
+        const screenY = item.y * zoom - currentEngine.camera.y;
+        const width = item.w * zoom;
+        const height = item.h * zoom;
+        if (screenX < 0 || screenY < 0 || screenX + width > currentEngine.viewportW || screenY + height > currentEngine.viewportH) {
+          anchorRef.current = null;
+          settleAnchorRef.current = null;
+          currentEngine.camera.x = item.x * zoom + width / 2 - currentEngine.viewportW / 2;
+          currentEngine.camera.y = item.y * zoom + height / 2 - currentEngine.viewportH * SETTLE_FOCUS_Y;
+          currentEngine.target.x = currentEngine.camera.x;
+          currentEngine.target.y = currentEngine.camera.y;
+          hardClampCamera(currentEngine, currentEngine.camera);
+          hardClampCamera(currentEngine, currentEngine.target);
+          renderFrame();
+          ensureLoop();
+        }
+        const rect = viewport.getBoundingClientRect();
+        return new DOMRect(
+          rect.left + item.x * zoom - currentEngine.camera.x,
+          rect.top + item.y * zoom - currentEngine.camera.y,
+          item.w * zoom,
+          item.h * zoom
+        );
+      });
     };
 
     const onWindowResize = () => {

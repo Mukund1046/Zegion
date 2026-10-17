@@ -19,9 +19,11 @@ import {
   PopoverContent,
 } from '@/components/animate-ui/components/radix/popover'
 import { useDialKit } from "dialkit";
+import type { SpatialCameraApi } from "@/hooks/useSpatialFeed";
 import { cleanPostText } from "@/lib/bookmark-utils";
 import { Badge } from "@/components/reui/badge";
 import SyncSettingsDialog from "@/components/ui/sync-settings-dialog";
+import { ClassificationReviewDialog } from "@/components/ui/classification-review-dialog";
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
@@ -33,6 +35,7 @@ import {
   CheckmarkCircle01Icon,
   UserIcon,
   TextIcon,
+  ArrowLeft01Icon,
 } from '@hugeicons/core-free-icons'
 import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import type { Bookmark } from "@/lib/types";
@@ -78,6 +81,7 @@ function ToolbarRegion({
   });
 
   const [syncSettingsOpen, setSyncSettingsOpen] = useState(false);
+  const [classificationReviewOpen, setClassificationReviewOpen] = useState(false);
 
   const moreParams = useDialKit("More Popover", {
     popoverPaddingX: [4, 0, 24, 1],
@@ -120,7 +124,48 @@ function ToolbarRegion({
               </div>
             </div>
           </div>
-          <div className="toolbar-center">
+          <div className="toolbar-center" style={{ gap: 8 }}>
+            <AnimatePresence mode="popLayout" initial={false}>
+              {(state.activeSearch.trim() || state.activeFacetType !== "all") ? (
+                <motion.span
+                  key="back"
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0, opacity: 0 }}
+                  transition={{ type: "spring", stiffness: 520, damping: 38 }}
+                  style={{ display: "inline-flex", alignItems: "center", flexShrink: 0 }}
+                >
+                  <SquircleClip
+                    asChild
+                    cornerRadius={btnParams.borderRadius as number}
+                    cornerSmoothing={1}
+                    stroke={btnParams.strokeColor}
+                    strokeWidth={btnParams.borderWidth as number}
+                  >
+                    <motion.button
+                      className="action-pill back-pill"
+                      type="button"
+                      aria-label="Back to previous feed"
+                      whileHover={{ scale: 1.03, y: -1 }}
+                      whileTap={{ scale: 0.96 }}
+                      transition={{ type: "spring", stiffness: 520, damping: 38 }}
+                      onClick={() => actions.goBackToFeed()}
+                      style={{
+                        gap: btnParams.gap as number,
+                        paddingLeft: btnParams.paddingX as number,
+                        paddingRight: btnParams.paddingX as number,
+                        paddingTop: btnParams.paddingY as number,
+                        paddingBottom: btnParams.paddingY as number,
+                        background: state.darkMode ? (btnParams.darkBgColor as string) : (btnParams.bgColor as string),
+                      }}
+                    >
+                      <HugeiconsIcon icon={ArrowLeft01Icon} size={16} className="shrink-0 opacity-50" />
+                      <span className="text-sm font-normal text-foreground">Back</span>
+                    </motion.button>
+                  </SquircleClip>
+                </motion.span>
+              ) : null}
+            </AnimatePresence>
             <SquircleClip
               asChild
               cornerRadius={btnParams.borderRadius as number}
@@ -165,12 +210,12 @@ function ToolbarRegion({
                         paddingBottom: btnParams.statsPaddingY as number,
                         borderRadius: btnParams.statsBorderRadius as number,
                       }}
-                      onClick={(e) => { e.stopPropagation(); actions.setActiveSearch("", true); }}
+                      onClick={(e) => { e.stopPropagation(); actions.goBackToFeed(); }}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
                           e.stopPropagation();
-                          actions.setActiveSearch("", true);
+                          actions.goBackToFeed();
                         }
                       }}
                     >
@@ -199,7 +244,7 @@ function ToolbarRegion({
           <div className="toolbar-right">
             <div className="sync-status" data-tone={state.syncStatusTone}>
               <AnimatePresence mode="popLayout">
-                {(state.syncBusy || state.reindexBusy) && (
+                {(state.syncBusy || state.reindexBusy || state.classifyBusy) && (
                   <motion.span
                     key="orb"
                     initial={{ scale: 0, opacity: 0 }}
@@ -276,9 +321,9 @@ function ToolbarRegion({
                     onMouseLeave={(e) => {
                       e.currentTarget.style.background = "transparent"
                     }}
-                    disabled={state.syncBusy || state.reindexBusy}
+                    disabled={state.syncBusy || state.reindexBusy || state.classifyBusy}
                     onClick={() =>
-                      actions.runServerAction("/api/reindex", "Re-indexing…", "Index refreshed", false)
+                      actions.runServerAction("/api/reindex", "Re-indexing…", "Index refreshed", "reindex")
                     }
                   >
                     <Image
@@ -309,9 +354,9 @@ function ToolbarRegion({
                     onMouseLeave={(e) => {
                       e.currentTarget.style.background = "transparent"
                     }}
-                    disabled={state.syncBusy || state.reindexBusy}
+                    disabled={state.syncBusy || state.reindexBusy || state.classifyBusy}
                     onClick={() =>
-                      actions.runServerAction("/api/sync", "Syncing…", "Sync complete", true)
+                      actions.runServerAction("/api/sync", "Syncing…", "Sync complete", "sync")
                     }
                   >
                     <Image
@@ -324,6 +369,53 @@ function ToolbarRegion({
                       unoptimized
                     />
                     Sync
+                  </button>
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 font-medium text-foreground transition-colors disabled:opacity-50 disabled:cursor-progress"
+                    style={{
+                      padding: `${moreParams.hoverPaddingY as number}px ${moreParams.hoverPaddingX as number}px`,
+                      borderRadius: moreParams.hoverBorderRadius as number,
+                      background: "transparent",
+                      fontSize: moreParams.popoverFontSize as number,
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = state.darkMode
+                        ? (moreParams.hoverColorDark as string)
+                        : (moreParams.hoverColor as string)
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "transparent"
+                    }}
+                    disabled={state.syncBusy || state.reindexBusy || state.classifyBusy || !state.classifyAvailable.available}
+                    title={state.classifyAvailable.hint ?? "Run Field Theory classification. Completed category and domain labels are committed to the Field Theory database."}
+                    onClick={() =>
+                      actions.runServerAction("/api/classify", "Starting Field Theory classification…", "Field Theory classification complete", "classify", {
+                        successFromPayload: (payload) =>
+                          `Field Theory classified ${payload.telemetry?.categoriesClassified ?? 0} categories and ${payload.telemetry?.domainsClassified ?? 0} domains`,
+                      })
+                    }
+                  >
+                    <svg width={moreParams.popoverIconSize as number} height={moreParams.popoverIconSize as number} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-50">
+                      <path d="M12 2H2v10l9.29 9.29a1 1 0 0 0 1.42 0l8.58-8.58a1 1 0 0 0 0-1.42Z" />
+                      <circle cx="7" cy="7" r="1.5" />
+                    </svg>
+                    {state.classifyBusy ? "Classifying…" : "Classify"}
+                  </button>
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 font-medium text-foreground transition-colors"
+                    style={{
+                      padding: `${moreParams.hoverPaddingY as number}px ${moreParams.hoverPaddingX as number}px`,
+                      borderRadius: moreParams.hoverBorderRadius as number,
+                      background: "transparent",
+                      fontSize: moreParams.popoverFontSize as number,
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = state.darkMode ? (moreParams.hoverColorDark as string) : (moreParams.hoverColor as string); }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                    onClick={() => setClassificationReviewOpen(true)}
+                  >
+                    Classification history
                   </button>
                   <div className="border-t my-1 mx-2" style={{ borderColor: state.darkMode ? moreParams.dividerColorDark as string : moreParams.dividerColor as string }} />
                   <button
@@ -431,6 +523,11 @@ function ToolbarRegion({
         open={syncSettingsOpen}
         onOpenChange={setSyncSettingsOpen}
       />
+      <ClassificationReviewDialog
+        open={classificationReviewOpen}
+        onOpenChange={setClassificationReviewOpen}
+        bookmarks={state.allBookmarks}
+      />
     </div>
   );
 }
@@ -440,11 +537,13 @@ function FeedRegion({
   state,
   actions,
   helpers,
+  cameraApiRef,
 }: {
   refs: ReturnType<typeof useBookmarkViewer>["refs"];
   state: ReturnType<typeof useBookmarkViewer>["state"];
   actions: ReturnType<typeof useBookmarkViewer>["actions"];
   helpers: ReturnType<typeof useBookmarkViewer>["helpers"];
+  cameraApiRef: React.RefObject<SpatialCameraApi | null>;
 }) {
   const bar = useDialKit("Feed Bottom Bar", {
     paddingX: [4, 4, 32, 1],
@@ -491,6 +590,7 @@ function FeedRegion({
         }
         onOpenLightbox={actions.openLightbox}
         onOpenContextMenu={actions.openContextMenu}
+        cameraApiRef={cameraApiRef}
       />
       {/* The Media/Cards toggle is intentionally absent. The Cards renderer
           remains in useSpatialFeed for the later dedicated Cards UI. */}
@@ -589,7 +689,7 @@ function SearchCommand({
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {
       if (!nextOpen && !appliedRef.current && state.activeSearch) {
-        actions.clearSearch();
+        actions.goBackToFeed();
       }
       onOpenChange(nextOpen);
     },
@@ -1142,7 +1242,8 @@ function SearchCommand({
 }
 
 export default function BookmarksViewer() {
-  const { refs, state, actions, helpers, focus } = useBookmarkViewer() as ReturnType<typeof useBookmarkViewer> & { focus: { focusState: { bookmark: import("@/lib/spatial/dom-renderer").BookmarkForRender | null; phase: "closed" | "opening" | "opened" | "closing"; isActive: boolean; isAnimating: boolean } } };
+  const cameraApiRef = useRef<SpatialCameraApi | null>(null);
+  const { refs, state, actions, helpers, focus } = useBookmarkViewer(cameraApiRef) as ReturnType<typeof useBookmarkViewer> & { focus: { focusState: { bookmark: import("@/lib/spatial/dom-renderer").BookmarkForRender | null; phase: "closed" | "opening" | "opened" | "closing"; isActive: boolean; isAnimating: boolean } } };
   const [searchOpen, setSearchOpen] = useState(false);
   const contextAnchorRef = useRef<HTMLDivElement>(null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1218,7 +1319,7 @@ export default function BookmarksViewer() {
             onSearchOpenChange={setSearchOpen}
           />
           <div className="workspace-shell">
-            <FeedRegion refs={refs} state={state} actions={actions} helpers={helpers} />
+            <FeedRegion refs={refs} state={state} actions={actions} helpers={helpers} cameraApiRef={cameraApiRef} />
           </div>
         </section>
         <SearchCommand
@@ -1231,6 +1332,8 @@ export default function BookmarksViewer() {
         <LightboxOverlay refs={refs} state={state} actions={actions} />
         <SpatialFocusDetails
           bookmark={focus.focusState.bookmark}
+          bookmarkIds={state.displayBookmarks.map((bookmark) => bookmark.id)}
+          onNavigate={focus.navigateToBookmark}
           phase={focus.focusState.phase}
           isActive={focus.focusState.isActive}
           isAnimating={focus.focusState.isAnimating}

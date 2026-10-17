@@ -92,7 +92,7 @@ Documentation of the actual implementation architecture.
 
 ### Component: JSON file storage
 - **Purpose:** the store.
-- **Location:** `data/output/bookmarks-data.json`, `data/output/folders-data.json`, `data/bookmarks/bookmarks.jsonl`, `cookies-config.json`, `bookmarks-meta.json`.
+- **Location:** Field Theory JSONL/database under `FT_DATA_DIR` (or its default per-user data root); exported caches under `data/output/` unless configured otherwise. Cookie settings are a separate stable per-user file, not tied to JSONL existence.
 - **Inputs:** spawned scripts.
 - **Outputs:** API JSON.
 - **Failure modes:** missing/corrupt files → empty arrays (graceful).
@@ -106,6 +106,7 @@ Documentation of the actual implementation architecture.
 - **Purpose:** choose cookie source (`auto` browser vs `manual` pasted) and guard API routes.
 - **Location:** `lib/cookie-config.ts`, `lib/api-auth.ts`.
 - **Inputs:** `GET/POST /api/cookies`, request headers.
+- **Credential location/protection:** `~/.ft-bookmarks/cookies-config.json` by default (`FT_DATA_DIR` or `X_COOKIE_CONFIG` can override); DPAPI-protected on Windows, owner-only file permissions on other platforms.
 - **Outputs:** cookie mode string (`auto:firefox`, `manual-runtime`, etc.); auth verdict.
 - **Dependencies:** `native-config.ts` (JSONL dir).
 - **Consumers:** `server-jobs.ts`, all API routes.
@@ -140,7 +141,9 @@ See `INTEGRATIONS.md`.
 - **JSONL:** `data/bookmarks/bookmarks.jsonl` (or `FT_DATA_DIR`) — Field Theory's raw export.
 - **JSON:** `data/output/bookmarks-data.json` — merged + enriched (category/domain/linked domains/folders).
 - **JSON:** `data/output/folders-data.json` — folder names.
-- **JSON:** `cookies-config.json` — cookie source configuration (next to JSONL).
+- **JSON:** per-user `cookies-config.json` — cookie source configuration (stable before/after DB creation).
+- **Field Theory SQLite:** `FT_DATA_DIR/bookmarks.db` (or Field Theory's default) — canonical categories/domains written batch-by-batch by native `ft classify`.
+- **JSON:** `data/output/classify-runs/` — native classification status/history plus legacy staged-provider records and review ledger; old staged suggestions are read-only history and are not applied by the app.
 - **JSON:** `bookmarks-meta.json` — last run timestamps.
 - **localStorage:** `kairos_state` (viewer prefs), `kairos-spatial-settle` (DialKit tune values).
 
